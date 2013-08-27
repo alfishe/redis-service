@@ -156,19 +156,14 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\msvs\hiredis\hiredis.vcxproj">
+    <ProjectReference Include="..\msvc\hiredis\hiredis.vcxproj">
       <Project>{13e85053-54b3-487b-8ddb-3430b1c1b3bf}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\msvs\lua\lua\lua.vcxproj">
+    <ProjectReference Include="..\msvc\lua\lua\lua.vcxproj">
       <Project>{170b0909-5f75-467f-9501-c99dec16c6dc}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\msvs\RedisServer.vcxproj">
+    <ProjectReference Include="..\msvc\RedisServer.vcxproj">
       <Project>{46842776-68a5-ec98-6a09-1859bbfc73aa}</Project>
-      <Private>true</Private>
-      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
-      <CopyLocalSatelliteAssemblies>false</CopyLocalSatelliteAssemblies>
-      <LinkLibraryDependencies>true</LinkLibraryDependencies>
-      <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
