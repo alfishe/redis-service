@@ -1004,7 +1004,7 @@ struct redisCommand *lookupCommandOrOriginal(sds name);
 void call(redisClient *c, int flags);
 void propagate(struct redisCommand *cmd, int dbid, robj **argv, int argc, int flags);
 void alsoPropagate(struct redisCommand *cmd, int dbid, robj **argv, int argc, int target);
-int prepareForShutdown();
+int prepareForShutdown(int flags);
 void redisLog(int level, const char *fmt, ...);
 void redisLogRaw(int level, const char *msg);
 void redisLogFromHandler(int level, const char *msg);

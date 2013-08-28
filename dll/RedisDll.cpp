@@ -81,8 +81,11 @@ REDIS_DLL_API int startRedisServer()
 
 REDIS_DLL_API int stopRedisServer()
 {
+	// Shutdown Redis server by sending SIGTERM to current process
+	raise(SIGTERM);
+
 	// Shutdown Redis server
-	callsigtermHandler(1);
+	//callsigtermHandler(1);
 
 	return S_OK;
 }

@@ -588,7 +588,7 @@ BOOL WINAPI executedasservice(void)
 
 	getparentprocessname(name);
 
-	if (strncmp(SERVICE_LAUNCHER, name, PROCESS_NAME_LEN))
+	if (strncmp(SERVICE_LAUNCHER, name, PROCESS_NAME_LEN) == 0)
 		result = TRUE;
 
 	free(name);
@@ -669,7 +669,9 @@ BOOL WINAPI getprocessentry(LPPROCESSENTRY32 entry, DWORD processID)
 
 void redisexit(int code)
 {
-	if (executedasservice())
+	BOOL isservice = executedasservice();
+
+	if (isservice == TRUE)
 	{
 		// Do not interrupt service thread
 	}

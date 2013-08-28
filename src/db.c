@@ -32,6 +32,12 @@
 #include <signal.h>
 #include <ctype.h>
 
+#ifdef _WIN32
+#include "win32fixes.h"
+// Turn on intellectual exit
+#define exit redisexit
+#endif
+
 void SlotToKeyAdd(robj *key);
 void SlotToKeyDel(robj *key);
 
@@ -39,55 +45,74 @@ void SlotToKeyDel(robj *key);
  * C-level DB API
  *----------------------------------------------------------------------------*/
 
-robj *lookupKey(redisDb *db, robj *key) {
+robj *lookupKey(redisDb *db, robj *key)
+{
+	robj* result = NULL;
+
     dictEntry *de = dictFind(db->dict,key->ptr);
-    if (de) {
-        robj *val = dictGetVal(de);
+
+    if (de)
+	{
+        robj *val = (robj*)dictGetVal(de);
 
         /* Update the access time for the ageing algorithm.
          * Don't do it if we have a saving child, as this will trigger
          * a copy on write madness. */
         if (server.rdb_child_pid == -1 && server.aof_child_pid == -1)
             val->lru = server.lruclock;
-        return val;
-    } else {
-        return NULL;
+
+        result = val;
     }
+
+	return result;
 }
 
-robj *lookupKeyRead(redisDb *db, robj *key) {
+robj *lookupKeyRead(redisDb *db, robj *key)
+{
     robj *val;
 
     expireIfNeeded(db,key);
     val = lookupKey(db,key);
+
     if (val == NULL)
         server.stat_keyspace_misses++;
     else
         server.stat_keyspace_hits++;
+
     return val;
 }
 
-robj *lookupKeyWrite(redisDb *db, robj *key) {
+robj *lookupKeyWrite(redisDb *db, robj *key)
+{
     robj *o;
     expireIfNeeded(db,key);
     o = lookupKey(db,key);
+
 #ifdef _WIN32
-    if (server.isBackgroundSaving) {
+    if (server.isBackgroundSaving)
+	{
         o = cowEnsureWriteCopy(db, key, o);
     }
 #endif
+
     return o;
 }
 
-robj *lookupKeyReadOrReply(redisClient *c, robj *key, robj *reply) {
+robj *lookupKeyReadOrReply(redisClient *c, robj *key, robj *reply)
+{
     robj *o = lookupKeyRead(c->db, key);
-    if (!o) addReply(c,reply);
+    if (!o)
+		addReply(c,reply);
+
     return o;
 }
 
-robj *lookupKeyWriteOrReply(redisClient *c, robj *key, robj *reply) {
+robj *lookupKeyWriteOrReply(redisClient *c, robj *key, robj *reply)
+{
     robj *o = lookupKeyWrite(c->db, key);
-    if (!o) addReply(c,reply);
+    if (!o)
+		addReply(c,reply);
+
     return o;
 }
 
@@ -367,23 +392,35 @@ void typeCommand(redisClient *c) {
     addReplyStatus(c,type);
 }
 
-void shutdownCommand(redisClient *c) {
+void shutdownCommand(redisClient *c)
+{
     int flags = 0;
 
-    if (c->argc > 2) {
+    if (c->argc > 2)
+	{
         addReply(c,shared.syntaxerr);
         return;
-    } else if (c->argc == 2) {
-        if (!strcasecmp(c->argv[1]->ptr,"nosave")) {
+    }
+	else if (c->argc == 2)
+	{
+        if (!strcasecmp(c->argv[1]->ptr,"nosave"))
+		{
             flags |= REDIS_SHUTDOWN_NOSAVE;
-        } else if (!strcasecmp(c->argv[1]->ptr,"save")) {
+        }
+		else if (!strcasecmp(c->argv[1]->ptr,"save"))
+		{
             flags |= REDIS_SHUTDOWN_SAVE;
-        } else {
+        }
+		else
+		{
             addReply(c,shared.syntaxerr);
             return;
         }
     }
-    if (prepareForShutdown(flags) == REDIS_OK) exit(0);
+
+    if (prepareForShutdown(flags) == REDIS_OK)
+		exit(0);
+
     addReplyError(c,"Errors trying to SHUTDOWN. Check logs.");
 }
 

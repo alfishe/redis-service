@@ -912,7 +912,8 @@ void databasesCron(void) {
  * a macro is used: run_with_period(milliseconds) { .... }
  */
 
-int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
+int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData)
+{
     int j;
     REDIS_NOTUSED(eventLoop);
     REDIS_NOTUSED(id);
@@ -920,7 +921,8 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     /* Software watchdog: deliver the SIGALRM that will reach the signal
      * handler if we don't return here fast enough. */
-    if (server.watchdog_period) watchdogScheduleSignal(server.watchdog_period);
+    if (server.watchdog_period)
+		watchdogScheduleSignal(server.watchdog_period);
 
     /* We take a cached value of the unix time in the global state because
      * with virtual memory and aging there is to store the current time
@@ -928,7 +930,8 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
      * To access a global var is faster than calling time(NULL) */
     server.unixtime = time(NULL);
 
-    run_with_period(100) trackOperationsPerSecond();
+    run_with_period(100)
+		trackOperationsPerSecond();
 
     /* We have just 22 bits per object for LRU information.
      * So we use an (eventually wrapping) LRU clock with 10 seconds resolution.
@@ -950,16 +953,20 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     /* We received a SIGTERM, shutting down here in a safe way, as it is
      * not ok doing so inside the signal handler. */
-    if (server.shutdown_asap) {
+    if (server.shutdown_asap)
+	{
         if (prepareForShutdown(0) == REDIS_OK)
 			exit(0);
+
         redisLog(REDIS_WARNING,"SIGTERM received but errors trying to shut down the server, check the logs for more information");
         server.shutdown_asap = 0;
     }
 
     /* Show some info about non-empty databases */
-    run_with_period(5000) {
-        for (j = 0; j < server.dbnum; j++) {
+    run_with_period(5000)
+	{
+        for (j = 0; j < server.dbnum; j++)
+		{
             long long size, used, vkeys;
 
             size = dictSlots(server.db[j].dict);
@@ -973,8 +980,10 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     }
 
     /* Show information about connected clients */
-    if (!server.sentinel_mode) {
-        run_with_period(5000) {
+    if (!server.sentinel_mode)
+	{
+        run_with_period(5000)
+		{
 #ifdef _WIN32
             redisLog(REDIS_VERBOSE,
                 "%d clients connected (%d slaves), %llu bytes in use",
@@ -1006,18 +1015,28 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     }
 
     /* Check if a background saving or AOF rewrite in progress terminated. */
-    if (server.rdb_child_pid != -1 || server.aof_child_pid != -1) {
+    if (server.rdb_child_pid != -1 || server.aof_child_pid != -1)
+	{
 #ifdef _WIN32
-        if (server.rdbbkgdfsave.state == BKSAVE_SUCCESS) {
-            if (server.rdb_child_pid != -1) {
+        if (server.rdbbkgdfsave.state == BKSAVE_SUCCESS)
+		{
+            if (server.rdb_child_pid != -1)
+			{
                 backgroundSaveDoneHandler(0, 0);
-            } else {
+            }
+			else
+			{
                 backgroundRewriteDoneHandler(0, 0);
             }
-        } else if (server.rdbbkgdfsave.state == BKSAVE_FAILED) {
-            if (server.rdb_child_pid != -1) {
+        }
+		else if (server.rdbbkgdfsave.state == BKSAVE_FAILED)
+		{
+            if (server.rdb_child_pid != -1)
+			{
                 backgroundSaveDoneHandler(1, 0);
-            } else {
+            }
+			else
+			{
                 backgroundRewriteDoneHandler(1, 0);
             }
         }
@@ -1025,32 +1044,43 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         int statloc;
         pid_t pid;
 
-        if ((pid = wait3(&statloc,WNOHANG,NULL)) != 0) {
+        if ((pid = wait3(&statloc,WNOHANG,NULL)) != 0)
+		{
             int exitcode = WEXITSTATUS(statloc);
             int bysignal = 0;
             
             if (WIFSIGNALED(statloc)) bysignal = WTERMSIG(statloc);
 
-            if (pid == server.rdb_child_pid) {
+            if (pid == server.rdb_child_pid)
+			{
                 backgroundSaveDoneHandler(exitcode,bysignal);
-            } else if (pid == server.aof_child_pid) {
+            }
+			else if (pid == server.aof_child_pid)
+			{
                 backgroundRewriteDoneHandler(exitcode,bysignal);
-            } else {
+            }
+			else
+			{
                 redisLog(REDIS_WARNING,
                     "Warning, detected child with unmatched pid: %ld",
                     (long)pid);
             }
+
             updateDictResizePolicy();
         }
 #endif
-    } else {
+    }
+	else
+	{
         /* If there is not a background saving/rewrite in progress check if
          * we have to save/rewrite now */
-         for (j = 0; j < server.saveparamslen; j++) {
+         for (j = 0; j < server.saveparamslen; j++)
+		 {
             struct saveparam *sp = server.saveparams+j;
 
             if (server.dirty >= sp->changes &&
-                server.unixtime-server.lastsave > sp->seconds) {
+                server.unixtime-server.lastsave > sp->seconds)
+			{
                 redisLog(REDIS_NOTICE,"%d changes in %d seconds. Saving...",
                     sp->changes, sp->seconds);
                 rdbSaveBackground(server.rdb_filename);
@@ -1067,7 +1097,8 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
             long long base = server.aof_rewrite_base_size ?
                             server.aof_rewrite_base_size : 1;
             long long growth = (server.aof_current_size*100/base) - 100;
-            if (growth >= server.aof_rewrite_perc) {
+            if (growth >= server.aof_rewrite_perc)
+			{
                 redisLog(REDIS_NOTICE,"Starting automatic rewriting of AOF on %lld%% growth",growth);
                 rewriteAppendOnlyFileBackground();
             }
@@ -1077,18 +1108,22 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     /* If we postponed an AOF buffer flush, let's try to do it every time the
      * cron function is called. */
-    if (server.aof_flush_postponed_start) flushAppendOnlyFile(0);
+    if (server.aof_flush_postponed_start)
+		flushAppendOnlyFile(0);
 
     /* Close clients that need to be closed asynchronous */
     freeClientsInAsyncFreeQueue();
 
     /* Replication cron function -- used to reconnect to master and
      * to detect transfer failures. */
-    run_with_period(1000) replicationCron();
+    run_with_period(1000)
+		replicationCron();
 
     /* Run the sentinel timer if we are in sentinel mode. */
-    run_with_period(100) {
-        if (server.sentinel_mode) sentinelTimer();
+    run_with_period(100)
+	{
+        if (server.sentinel_mode)
+			sentinelTimer();
     }
 
     server.cronloops++;
@@ -1098,21 +1133,27 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 /* This function gets called every time Redis is entering the
  * main loop of the event driven library, that is, before to sleep
  * for ready file descriptors. */
-void beforeSleep(struct aeEventLoop *eventLoop) {
+void beforeSleep(struct aeEventLoop *eventLoop)
+{
     listNode *ln;
     redisClient *c;
     REDIS_NOTUSED(eventLoop);
 
     /* Try to process pending commands for clients that were just unblocked. */
-    while (listLength(server.unblocked_clients)) {
+    while (listLength(server.unblocked_clients))
+	{
         ln = listFirst(server.unblocked_clients);
+
         redisAssert(ln != NULL);
-        c = ln->value;
+
+        c = (redisClient*)ln->value;
+
         listDelNode(server.unblocked_clients,ln);
         c->flags &= ~REDIS_UNBLOCKED;
 
         /* Process remaining data in the input buffer. */
-        if (c->querybuf && sdslen(c->querybuf) > 0) {
+        if (c->querybuf && sdslen(c->querybuf) > 0)
+		{
             server.current_client = c;
             processInputBuffer(c);
             server.current_client = NULL;
@@ -1125,7 +1166,8 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
 
 /* =========================== Server initialization ======================== */
 
-void createSharedObjects(void) {
+void createSharedObjects(void)
+{
     int j;
 
     shared.crlf = createObject(REDIS_STRING,sdsnew("\r\n"));
@@ -1170,10 +1212,12 @@ void createSharedObjects(void) {
     shared.colon = createObject(REDIS_STRING,sdsnew(":"));
     shared.plus = createObject(REDIS_STRING,sdsnew("+"));
 
-    for (j = 0; j < REDIS_SHARED_SELECT_CMDS; j++) {
+    for (j = 0; j < REDIS_SHARED_SELECT_CMDS; j++)
+	{
         shared.select[j] = createObject(REDIS_STRING,
             sdscatprintf(sdsempty(),"select %d\r\n", j));
     }
+
     shared.messagebulk = createStringObject("$7\r\nmessage\r\n",13);
     shared.pmessagebulk = createStringObject("$8\r\npmessage\r\n",14);
     shared.subscribebulk = createStringObject("$9\r\nsubscribe\r\n",15);
@@ -1184,11 +1228,15 @@ void createSharedObjects(void) {
     shared.rpop = createStringObject("RPOP",4);
     shared.lpop = createStringObject("LPOP",4);
     shared.lpush = createStringObject("LPUSH",5);
-    for (j = 0; j < REDIS_SHARED_INTEGERS; j++) {
+
+    for (j = 0; j < REDIS_SHARED_INTEGERS; j++)
+	{
         shared.integers[j] = createObject(REDIS_STRING,(void*)(long)j);
         shared.integers[j]->encoding = REDIS_ENCODING_INT;
     }
-    for (j = 0; j < REDIS_SHARED_BULKHDR_LEN; j++) {
+
+    for (j = 0; j < REDIS_SHARED_BULKHDR_LEN; j++)
+	{
         shared.mbulkhdr[j] = createObject(REDIS_STRING,
             sdscatprintf(sdsempty(),"*%d\r\n",j));
         shared.bulkhdr[j] = createObject(REDIS_STRING,
@@ -1196,7 +1244,8 @@ void createSharedObjects(void) {
     }
 }
 
-void initServerConfig() {
+void initServerConfig()
+{
     getRandomHexChars(server.runid,REDIS_RUN_ID_SIZE);
     server.hz = REDIS_DEFAULT_HZ;
     server.runid[REDIS_RUN_ID_SIZE] = '\0';

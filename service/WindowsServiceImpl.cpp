@@ -24,7 +24,6 @@ CWindowsServiceImpl::CWindowsServiceImpl(PWSTR pszServiceName,
 	m_hWorkThread = INVALID_HANDLE_VALUE;
 }
 
-
 CWindowsServiceImpl::~CWindowsServiceImpl(void)
 {
 	if (m_hStoppingEvent)
@@ -43,8 +42,7 @@ CWindowsServiceImpl::~CWindowsServiceImpl(void)
 void CWindowsServiceImpl::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
 {
     // Log a service start message to the Application log.
-    WriteEventLogEntry(L"Redis is starting...", 
-        EVENTLOG_INFORMATION_TYPE);
+    WriteEventLogEntry(L"Redis is starting...", EVENTLOG_INFORMATION_TYPE);
 
     // Queue the main service function for execution in a worker thread.
     CThreadPool::QueueUserWorkItem(&CWindowsServiceImpl::ServiceWorkerThread, this);
@@ -58,6 +56,8 @@ void CWindowsServiceImpl::ServiceWorkerThread(void)
 	// Start Redis
 	startRedisServer();
 
+	WriteEventLogEntry(L"Redis successfully started", EVENTLOG_INFORMATION_TYPE);
+
     // Periodically check if the service is stopping.
     while (WaitForSingleObject(m_hStoppingEvent, OPERATION_TIMEOUT) != WAIT_OBJECT_0)
     {
@@ -65,6 +65,8 @@ void CWindowsServiceImpl::ServiceWorkerThread(void)
 		// Redis is working in parallel thread(s)
 		Sleep(1);
     }
+
+	WriteEventLogEntry(L"Stop event detected", EVENTLOG_INFORMATION_TYPE);
 
 	// Stop Redis
 	stopRedisServer();
@@ -81,6 +83,9 @@ void CWindowsServiceImpl::OnStop()
     // Indicate that the service is stopping and wait for the finish of the 
     // main service function (ServiceWorkerThread).
 	SetEvent(m_hStoppingEvent);
+
+	// Stop Redis
+	stopRedisServer();
 
 	// Wait until service loop finishes
 	DWORD result = WaitForSingleObject(m_hStoppedEvent, SERVICE_STOP_TIMEOUT);
