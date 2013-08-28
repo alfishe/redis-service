@@ -1,4 +1,4 @@
-// WindowsService.cpp : Entry point when started as user application
+// WindowsService.cpp : Entry point for the service
 //
 
 #include "stdafx.h"
@@ -12,8 +12,11 @@
 // Displayed name of the service
 #define SERVICE_DISPLAY_NAME     L"Redis Service"
 
+// Displayed service description
+#define SERVICE_DISPLAY_DESCRIPTION	L"Hosts Redis server in a windows service"
+
 // Service start options.
-#define SERVICE_START_TYPE       SERVICE_DEMAND_START
+#define SERVICE_START_TYPE       SERVICE_AUTO_START
 
 // List of service dependencies - "dep1\0dep2\0\0"
 #define SERVICE_DEPENDENCIES     L""
@@ -65,6 +68,7 @@ BOOL ctrlHandler(DWORD fdwCtrlType)
 
 int wmain(int argc, wchar_t *argv[])
 {
+	// Executed as console application
     if ((argc > 1) && ((*argv[1] == L'-' || (*argv[1] == L'/'))))
     {
         if (_wcsicmp(L"install", argv[1] + 1) == 0)
@@ -73,12 +77,13 @@ int wmain(int argc, wchar_t *argv[])
             // "-install" or "/install".
 			
             InstallService(
-                SERVICE_NAME,               // Name of service
-                SERVICE_DISPLAY_NAME,       // Name to display
-                SERVICE_START_TYPE,         // Service start type
-                SERVICE_DEPENDENCIES,       // Dependencies
-                SERVICE_ACCOUNT,            // Service running account
-                SERVICE_PASSWORD            // Password of the account
+                SERVICE_NAME,                // Name of service
+                SERVICE_DISPLAY_NAME,        // Name to display
+				SERVICE_DISPLAY_DESCRIPTION, // Description to display
+                SERVICE_START_TYPE,          // Service start type
+                SERVICE_DEPENDENCIES,        // Dependencies
+                SERVICE_ACCOUNT,             // Service running account
+                SERVICE_PASSWORD             // Password of the account
                 );
         }
         else if (_wcsicmp(L"remove", argv[1] + 1) == 0)
@@ -106,6 +111,13 @@ int wmain(int argc, wchar_t *argv[])
         wprintf(L" /remove       to remove the service.\n");
 		wprintf(L" /commandline  to execute as CLI tool.\n");
     }
+
+	// Executed as a service from SCM
+	if (argc <= 1)
+	{
+		service = new CWindowsServiceImpl(SERVICE_NAME);
+		CServiceBase::Run(*service);
+	}
 
     return 0;
 }
