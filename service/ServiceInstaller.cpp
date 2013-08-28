@@ -32,20 +32,21 @@ void InstallService(PWSTR pszServiceName,
 
     // Install the service into SCM by calling CreateService
     schService = CreateService(
-        schSCManager,                   // SCManager database
-        pszServiceName,                 // Name of service
-        pszDisplayName,                 // Name to display
-        SERVICE_QUERY_STATUS,           // Desired access
-        SERVICE_WIN32_OWN_PROCESS,      // Service type
-        dwStartType,                    // Service start type
-        SERVICE_ERROR_NORMAL,           // Error control type
-        szPath,                         // Service's binary
-        NULL,                           // No load ordering group
-        NULL,                           // No tag identifier
-        pszDependencies,                // Dependencies
-        pszAccount,                     // Service running account
-        pszPassword                     // Password of the account
-        );
+								schSCManager,                   // SCManager database
+								pszServiceName,                 // Name of service
+								pszDisplayName,                 // Name to display
+								SERVICE_QUERY_STATUS,           // Desired access
+								SERVICE_WIN32_OWN_PROCESS,      // Service type
+								dwStartType,                    // Service start type
+								SERVICE_ERROR_NORMAL,           // Error control type
+								szPath,                         // Service's binary
+								NULL,                           // No load ordering group
+								NULL,                           // No tag identifier
+								pszDependencies,                // Dependencies
+								pszAccount,                     // Service running account
+								pszPassword                     // Password of the account
+								);
+
     if (schService == NULL)
     {
         wprintf(L"CreateService failed w/err 0x%08lx\n", GetLastError());

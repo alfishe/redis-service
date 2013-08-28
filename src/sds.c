@@ -39,21 +39,33 @@
 #include "win32fixes.h"
 #endif
 
-sds sdsnewlen(const void *init, size_t initlen) {
+sds sdsnewlen(const char *init, size_t initlen)
+{
     struct sdshdr *sh;
+	size_t alloclen = sizeof(struct sdshdr) + initlen + 1;
 
-    if (init) {
-        sh = zmalloc(sizeof(struct sdshdr)+initlen+1);
-    } else {
-        sh = zcalloc(sizeof(struct sdshdr)+initlen+1);
+	// Alloc memory for sds header structure + command name + '\0' end of line
+    if (init)
+	{
+        sh = (struct sdshdr *)zmalloc(alloclen);
     }
-    if (sh == NULL) return NULL;
+	else
+	{
+        sh = (struct sdshdr *)zcalloc(alloclen);
+    }
+
+    if (sh == NULL)
+		return NULL;
+
     sh->len = (int)initlen;
     sh->free = 0;
+
     if (initlen && init)
-        memcpy(sh->buf, init, initlen);
+        memcpy(&sh->buf, init, initlen);
+
     sh->buf[initlen] = '\0';
-    return (char*)sh->buf;
+
+    return sh->buf;
 }
 
 sds sdsempty(void) {

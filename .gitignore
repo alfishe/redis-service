@@ -14,3 +14,4 @@
 Debug/
 *.opensdf
 *.sdf
+*.ipch

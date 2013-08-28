@@ -1392,7 +1392,7 @@ void clientCommand(redisClient *c)
     }
 	else if (!strcasecmp(c->argv[1]->ptr,"setname") && c->argc == 3)
 	{
-        int j, len = sdslen(c->argv[2]->ptr);
+        size_t j, len = sdslen(c->argv[2]->ptr);
         char *p = c->argv[2]->ptr;
 
         /* Setting the client name to an empty string actually removes

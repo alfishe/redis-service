@@ -2788,13 +2788,21 @@ void memtest(size_t megabytes, int passes);
 
 /* Returns 1 if there is --sentinel among the arguments or if
  * argv[0] is exactly "redis-sentinel". */
-int checkForSentinelMode(int argc, char **argv) {
+int checkForSentinelMode(int argc, char **argv)
+{
+	int result = 0;
     int j;
 
-    if (strstr(argv[0],"redis-sentinel") != NULL) return 1;
-    for (j = 1; j < argc; j++)
-        if (!strcmp(argv[j],"--sentinel")) return 1;
-    return 0;
+	if (argv)
+	{
+		if (strstr(argv[0],"redis-sentinel") != NULL)
+			return 1;
+		for (j = 1; j < argc; j++)
+			if (!strcmp(argv[j],"--sentinel"))
+				return 1;
+	}
+
+    return result;
 }
 
 /* Function called at startup to load RDB or AOF file in memory. */

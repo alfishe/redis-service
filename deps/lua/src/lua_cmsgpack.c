@@ -138,26 +138,33 @@ static void mp_cur_free(mp_cur *cursor) {
 
 /* --------------------------- Low level MP encoding -------------------------- */
 
-static void mp_encode_bytes(mp_buf *buf, const unsigned char *s, size_t len) {
+static void mp_encode_bytes(mp_buf *buf, const unsigned char *s, size_t len)
+{
     unsigned char hdr[5];
     int hdrlen;
 
-    if (len < 32) {
+    if (len < 32)
+	{
         hdr[0] = 0xa0 | (len&0xff); /* fix raw */
         hdrlen = 1;
-    } else if (len <= 0xffff) {
-        hdr[0] = 0xda;
-        hdr[1] = (len&0xff00)>>8;
-        hdr[2] = len&0xff;
+    }
+	else if (len <= 0xffff)
+	{
+        hdr[0] = (unsigned char)0xda;
+        hdr[1] = (unsigned char)((len & 0xff00) >> 8);
+        hdr[2] = (unsigned char)(len & 0xff);
         hdrlen = 3;
-    } else {
+    }
+	else
+	{
         hdr[0] = 0xdb;
-        hdr[1] = (len&0xff000000)>>24;
-        hdr[2] = (len&0xff0000)>>16;
-        hdr[3] = (len&0xff00)>>8;
-        hdr[4] = len&0xff;
+        hdr[1] = (unsigned char)((len & 0xff000000) >> 24);
+        hdr[2] = (unsigned char)((len & 0xff0000) >> 16);
+        hdr[3] = (unsigned char)((len & 0xff00) >> 8);
+        hdr[4] = (unsigned char)(len & 0xff);
         hdrlen = 5;
     }
+
     mp_buf_append(buf,hdr,hdrlen);
     mp_buf_append(buf,s,len);
 }

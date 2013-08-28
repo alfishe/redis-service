@@ -33,8 +33,8 @@ REDIS_DLL_API int startRedisServer()
 
 	dictSetHashFunctionSeed(tv.tv_sec^tv.tv_usec^getpid());
 
-	// TODO: read sentinel settings from config or accept as DLL call parameter
-	server.sentinel_mode = checkForSentinelMode(0, NULL);
+	// TODO: Allow to use sentinel mode
+	server.sentinel_mode = 0; // checkForSentinelMode(0, NULL);
 
 	initServerConfig();
 

@@ -1129,11 +1129,13 @@ static void getRDB(void)
         }
     }
 
-    while(payload)
+    while (payload)
 	{
-        ssize_t nread, nwritten;
+        size_t nread, nwritten;
         
-        nread = (ssize_t)read((int)s, buf, (unsigned int)(payload > sizeof(buf)) ? sizeof(buf) : payload);
+		unsigned int readlen = payload > sizeof(buf) ? (unsigned int)sizeof(buf) : (unsigned int)payload;
+
+        nread = read((int)s, buf, readlen);
 
         if (nread <= 0)
 		{
@@ -1141,7 +1143,7 @@ static void getRDB(void)
             exit(1);
         }
 
-        nwritten = write(fd, buf, nread);
+        nwritten = write(fd, buf, (unsigned int)nread);
 
         if (nwritten != nread)
 		{
