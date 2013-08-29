@@ -673,7 +673,9 @@ void redisexit(int code)
 
 	if (isservice == TRUE)
 	{
-		// Do not interrupt service thread
+		// Service - exit current thread only
+		// This will be detected by RedisDll watching thread which can perform correct shutdown
+		ExitThread(S_OK);
 	}
 	else
 	{

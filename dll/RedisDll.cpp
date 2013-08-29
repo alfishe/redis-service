@@ -21,7 +21,65 @@ extern "C"
 	void callsigtermHandler(int sig);
 }
 
+HANDLE hWorkerThread = NULL;
+HANDLE hStartedEvent = NULL;
+
 REDIS_DLL_API int startRedisServer()
+{
+	int result = S_FALSE;
+
+	hStartedEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+
+	hWorkerThread = CreateThread(
+		NULL,                   // default security attributes
+        0,                      // use default stack size  
+        ThreadWorker,			// thread function name
+        NULL,					// argument to thread function 
+        0,                      // use default creation flags 
+        NULL);   // returns the thread identifier
+
+	if (hWorkerThread != NULL)
+	{
+		result = S_OK;
+	}
+
+	return result;
+}
+
+REDIS_DLL_API int stopRedisServer()
+{
+	// Redis already stopped or currently is shutting down
+	if (hWorkerThread == NULL || server.shutdown_asap == 1)
+		return S_FALSE;
+
+	// Shutdown Redis server (this will interrupt main processing loop
+	server.shutdown_asap = 1;
+
+	// Wait for Redis thread to stop
+	DWORD result = WaitForSingleObject(hWorkerThread, INFINITE);
+
+	if (result == WAIT_OBJECT_0)
+	{
+		if (server.el)
+		{
+			// Cleanup
+			aeDeleteEventLoop(server.el);
+		}
+
+		CloseHandle(hWorkerThread);
+		hWorkerThread = NULL;
+	}
+
+	if (hStartedEvent != NULL)
+	{
+		CloseHandle(hStartedEvent);
+		hStartedEvent = NULL;
+	}
+
+	return S_OK;
+}
+
+DWORD WINAPI ThreadWorker(LPVOID lpParam) 
 {
 	struct timeval tv;
 
@@ -73,19 +131,15 @@ REDIS_DLL_API int startRedisServer()
     }
 
     aeSetBeforeSleepProc(server.el, beforeSleep);
+
+	// Notify executing thread about redis thread started successfully
+	SetEvent(hStartedEvent);
+
+	// Execute Redis main processing loop
     aeMain(server.el);
-    aeDeleteEventLoop(server.el);
-
-	return S_OK;
-}
-
-REDIS_DLL_API int stopRedisServer()
-{
-	// Shutdown Redis server by sending SIGTERM to current process
-	raise(SIGTERM);
-
-	// Shutdown Redis server
-	//callsigtermHandler(1);
+    
+	// Cleanup in case main loop exits (which never happens)
+	aeDeleteEventLoop(server.el);
 
 	return S_OK;
 }

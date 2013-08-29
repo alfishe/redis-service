@@ -20,3 +20,4 @@ public:
 
 REDIS_DLL_API int startRedisServer(void);
 REDIS_DLL_API int stopRedisServer(void);
+DWORD WINAPI ThreadWorker(LPVOID lpParam);
