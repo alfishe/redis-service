@@ -347,11 +347,14 @@ typedef struct {
 void redisexit(int code);
 
 #include "TlHelp32.h"
-BOOL WINAPI executedasservice(void);
-BOOL WINAPI getparentprocessname(char* name);
-BOOL WINAPI getparentprocessentry(PROCESSENTRY32* entry);
-BOOL WINAPI getselfprocessentry(PROCESSENTRY32* entry);
-BOOL WINAPI getprocessentry(PROCESSENTRY32* entry, DWORD processID);
+static BOOL isinservicemode;
+
+BOOL getservicefilepath(LPSTR buffer, DWORD length);
+BOOL executedasservice(void);
+BOOL getparentprocessname(char* name);
+BOOL getparentprocessentry(PROCESSENTRY32* entry);
+BOOL getselfprocessentry(PROCESSENTRY32* entry);
+BOOL getprocessentry(PROCESSENTRY32* entry, DWORD processID);
 
 #endif /* WIN32 */
 #endif /* WIN32FIXES_H */

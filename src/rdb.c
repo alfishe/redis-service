@@ -1116,7 +1116,6 @@ int rdbSave(char *filename)
 #endif
 
     dictEntry *de;
-    char tmpfile[256];
     char magic[10];
     int j;
     long long now = mstime();
@@ -1124,12 +1123,22 @@ int rdbSave(char *filename)
     rio rdb;
     uint64_t cksum;
 
-    snprintf(tmpfile,256,"temp-%d.rdb", (int) getpid());
+#ifdef _WIN32
+	char tmpfile[_MAX_DIR + MAX_PATH];
+
+	// Determine executable path and create file there, not in current folder
+	// It will not work under SCM executed windows service process
+	snprintf(tmpfile, _MAX_DIR + MAX_PATH, "%stemp-%d.rdb", server.basepath, (int)getpid());
+#else
+	char tmpfile[MAX_PATH];
+
+	snprintf(tmpfile, MAX_PATH, "temp-%d.rdb", (int)getpid());
+#endif
 
 #ifdef _WIN32
-    fp = fopen(tmpfile,"wb");
+    fp = fopen(tmpfile, "wb");
 #else
-    fp = fopen(tmpfile,"w");
+    fp = fopen(tmpfile, "w");
 #endif
 
     if (!fp)
@@ -1143,20 +1152,21 @@ int rdbSave(char *filename)
     if (server.rdb_checksum)
         rdb.update_cksum = rioGenericUpdateChecksum;
 
-    snprintf(magic,sizeof(magic),"REDIS%04d",REDIS_RDB_VERSION);
+    snprintf(magic, sizeof(magic), "REDIS%04d", REDIS_RDB_VERSION);
 
-    if (rdbWriteRaw(&rdb,magic,9) == -1)
+    if (rdbWriteRaw(&rdb, magic, 9) == -1)
 		goto werr;
 
     for (j = 0; j < server.dbnum; j++)
 	{
         redisDb *db = server.db+j;
         dict *d = db->dict;
+
 #ifdef _WIN32
         if (server.isBackgroundSaving == 1)
 		{
             /* use background DB copy */
-            db = server.cowSaveDb+j;
+            db = server.cowSaveDb + j;
             d = db->dict;
         }
 
@@ -1178,8 +1188,10 @@ int rdbSave(char *filename)
         }
 
         /* Write the SELECT DB opcode */
-        if (rdbSaveType(&rdb,REDIS_RDB_OPCODE_SELECTDB) == -1) goto werr;
-        if (rdbSaveLen(&rdb,j) == -1) goto werr;
+        if (rdbSaveType(&rdb, REDIS_RDB_OPCODE_SELECTDB) == -1)
+			goto werr;
+        if (rdbSaveLen(&rdb, j) == -1)
+			goto werr;
 
         /* Iterate this DB writing every entry */
 #ifdef _WIN32
@@ -1200,7 +1212,8 @@ int rdbSave(char *filename)
 #else
             expire = getExpire(db,&key);
 #endif
-            if (rdbSaveKeyValuePair(&rdb,&key,o,expire,now) == -1) goto werr;
+            if (rdbSaveKeyValuePair(&rdb, &key, o, expire, now) == -1)
+				goto werr;
         }
 
 #ifdef _WIN32
@@ -1233,7 +1246,7 @@ int rdbSave(char *filename)
 
     /* Use RENAME to make sure the DB file is changed atomically only
      * if the generate DB file is ok. */
-    if (rename(tmpfile,filename) == -1)
+    if (rename(tmpfile, filename) == -1)
 	{
         redisLog(REDIS_WARNING,"Error moving temp DB file on the final destination: %s", strerror(errno));
         unlink(tmpfile);

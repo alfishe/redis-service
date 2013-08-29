@@ -272,39 +272,58 @@ void redisLogRaw(int level, const char *msg)
     const char *c = ".-*#";
     FILE *fp;
     char buf[64];
+	int off;
     int rawmode = (level & REDIS_LOG_RAW);
 
-    level &= 0xff; /* clear flags */
-    if (level < server.verbosity) return;
-
-    fp = (server.logfile == NULL) ? stdout : fopen(server.logfile,"a");
-    if (!fp) return;
-
-    if (rawmode) {
-        fprintf(fp,"%s",msg);
-    } else {
-        int off;
 #ifdef _WIN32
-        time_t secs;
-        unsigned int usecs;
+	static char message[10000];
 
-        secs = gettimeofdaysecs(&usecs);
-        off = (int)strftime(buf,sizeof(buf),"%d %b %H:%M:%S.",localtime(&secs));
-        snprintf(buf+off,sizeof(buf)-off,"%03d",usecs/1000);
+	time_t secs;
+	unsigned int usecs;
+
+	secs = gettimeofdaysecs(&usecs);
+	off = (int)strftime(buf,sizeof(buf),"%d %b %H:%M:%S.", localtime(&secs));
+	snprintf(buf + off, sizeof(buf) - off, "%03d", usecs / 1000);
 #else
-        struct timeval tv;
+    struct timeval tv;
 
-        gettimeofday(&tv,NULL);
-        off = strftime(buf,sizeof(buf),"%d %b %H:%M:%S.",localtime(&tv.tv_sec));
-        snprintf(buf+off,sizeof(buf)-off,"%03d",(int)tv.tv_usec/1000);
+    gettimeofday(&tv,NULL);
+    off = strftime(buf,sizeof(buf), "%d %b %H:%M:%S.", localtime(&tv.tv_sec));
+    snprintf(buf + off,sizeof(buf) - off, "%03d", (int)tv.tv_usec / 1000);
 #endif
-        fprintf(fp,"[%d] %s %c %s\n",(int)getpid(),buf,c[level],msg);
-    }
-    fflush(fp);
 
-    if (server.logfile) fclose(fp);
-#ifndef _WIN32
-    if (server.syslog_enabled) syslog(syslogLevelMap[level], "%s", msg);
+	level &= 0xff; /* clear flags */
+    if (level < server.verbosity)
+		return;
+
+	if (rawmode)
+		sprintf(message, "%s", msg);
+	else
+		sprintf(message, "[%d] %s %c %s\n", (int)getpid(), buf, c[level], msg);
+
+#ifdef _WIN32
+	// Block output to console if in windows service mode
+	if (server.logfile != NULL || !server.isinservicemode)
+#endif
+	{
+		fp = (server.logfile == NULL) ? stdout : fopen(server.logfile,"a");
+		if (!fp)
+			return;
+
+		fprintf(fp, "%s", message);
+
+		fflush(fp);
+
+		if (server.logfile)
+			fclose(fp);
+	}
+
+#ifdef _WIN32
+	// Duplicate all log messages into debug output
+	OutputDebugString(message);
+#else
+    if (server.syslog_enabled)
+		syslog(syslogLevelMap[level], "%s", msg);
 #endif
 }
 
@@ -316,7 +335,8 @@ void redisLog(int level, const char *fmt, ...)
     va_list ap;
     char msg[REDIS_MAX_LOGMSG_LEN];
 
-    if ((level&0xff) < server.verbosity) return;
+    if ((level&0xff) < server.verbosity)
+		return;
 
     va_start(ap, fmt);
     vsnprintf(msg, sizeof(msg), fmt, ap);
@@ -1265,6 +1285,26 @@ void createSharedObjects(void)
 
 void initServerConfig()
 {
+#ifdef _WIN32
+	char rdbfilename[] = "dump.rdb";
+	size_t rdbfilenamelen;
+
+	char aoffilename[] = "appendonly.aof";
+	size_t aoffilenamelen;
+
+	char* fullpath;
+	size_t pathlen;
+	char* path = (char*)zmalloc(MAX_PATH);
+
+	// Get full path
+	getservicefilepath(path, MAX_PATH);
+	pathlen = strlen(path);
+
+	server.basepath = path;
+	server.basepathlen = pathlen;
+
+#endif
+
     getRandomHexChars(server.runid,REDIS_RUN_ID_SIZE);
     server.hz = REDIS_DEFAULT_HZ;
     server.runid[REDIS_RUN_ID_SIZE] = '\0';
@@ -1304,8 +1344,27 @@ void initServerConfig()
     server.aof_selected_db = -1; /* Make sure the first time will not match */
     server.aof_flush_postponed_start = 0;
     server.pidfile = zstrdup("/var/run/redis.pid");
+
+#ifdef _WIN32
+	rdbfilenamelen = strlen(rdbfilename) + 1; // We need NULL terminator to be copied
+	aoffilenamelen = strlen(aoffilename) + 1; // We need NULL terminator to be copied
+
+	// Create full path to rdb file
+	fullpath = (char*)zmalloc(pathlen + rdbfilenamelen + 1);
+	memcpy(fullpath, path, pathlen);
+	memcpy(fullpath + pathlen, rdbfilename, rdbfilenamelen);
+	server.rdb_filename = fullpath;
+
+	// Create full path to aof file
+	fullpath = (char*)zmalloc(pathlen + aoffilenamelen + 1);
+	memcpy(fullpath, path, pathlen);
+	memcpy(fullpath + pathlen, aoffilename, aoffilenamelen);
+	server.aof_filename = fullpath;
+#else
     server.rdb_filename = zstrdup("dump.rdb");
-    server.aof_filename = zstrdup("appendonly.aof");
+	server.aof_filename = zstrdup("appendonly.aof");
+#endif
+
     server.requirepass = NULL;
     server.rdb_compression = 1;
     server.rdb_checksum = 1;
@@ -1458,6 +1517,10 @@ void initServer()
 #endif
 
 #ifdef _WIN32
+	// Determine executing mode
+	isinservicemode = executedasservice();
+	server.isinservicemode = isinservicemode;
+
      /* Force binary mode on all files */
     _fmode = _O_BINARY;
     _setmode(_fileno(stdin),  _O_BINARY);
@@ -2989,23 +3052,31 @@ int checkForSentinelMode(int argc, char **argv)
 }
 
 /* Function called at startup to load RDB or AOF file in memory. */
-void loadDataFromDisk(void) {
+void loadDataFromDisk(void)
+{
     long long start = ustime();
-    if (server.aof_state == REDIS_AOF_ON) {
+
+    if (server.aof_state == REDIS_AOF_ON)
+	{
         if (loadAppendOnlyFile(server.aof_filename) == REDIS_OK)
-            redisLog(REDIS_NOTICE,"DB loaded from append only file: %.3f seconds",(float)(ustime()-start)/1000000);
-    } else {
-        if (rdbLoad(server.rdb_filename) == REDIS_OK) {
-            redisLog(REDIS_NOTICE,"DB loaded from disk: %.3f seconds",
-                (float)(ustime()-start)/1000000);
-        } else if (errno != ENOENT) {
-            redisLog(REDIS_WARNING,"Fatal error loading the DB: %s. Exiting.",strerror(errno));
+            redisLog(REDIS_NOTICE,"DB loaded from append only file: %.3f seconds", (float)(ustime() - start) / 1000000);
+    }
+	else
+	{
+        if (rdbLoad(server.rdb_filename) == REDIS_OK)
+		{
+            redisLog(REDIS_NOTICE,"DB loaded from disk: %.3f seconds", (float)(ustime() - start) / 1000000);
+        }
+		else if (errno != ENOENT)
+		{
+            redisLog(REDIS_WARNING,"Fatal error loading the DB: %s. Exiting.", strerror(errno));
             exit(1);
         }
     }
 }
 
-void redisOutOfMemoryHandler(size_t allocation_size) {
+void redisOutOfMemoryHandler(size_t allocation_size)
+{
 #ifdef _WIN32
     redisLog(REDIS_WARNING,"Out Of Memory allocating %llu bytes!",
         (long long)allocation_size);
@@ -3013,10 +3084,12 @@ void redisOutOfMemoryHandler(size_t allocation_size) {
     redisLog(REDIS_WARNING,"Out Of Memory allocating %zu bytes!",
         allocation_size);
 #endif
+
     redisPanic("OOM");
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     struct timeval tv;
 
     /* We need to initialize our libraries, and the server configuration. */
@@ -3031,12 +3104,14 @@ int main(int argc, char **argv) {
     /* We need to init sentinel right now as parsing the configuration file
      * in sentinel mode will have the effect of populating the sentinel
      * data structures with master nodes to monitor. */
-    if (server.sentinel_mode) {
+    if (server.sentinel_mode)
+	{
         initSentinelConfig();
         initSentinel();
     }
 
-    if (argc >= 2) {
+    if (argc >= 2)
+	{
         int j = 1; /* First option to parse in argv[] */
         sds options = sdsempty();
         char *configfile = NULL;
@@ -3046,11 +3121,15 @@ int main(int argc, char **argv) {
             strcmp(argv[1], "--version") == 0) version();
         if (strcmp(argv[1], "--help") == 0 ||
             strcmp(argv[1], "-h") == 0) usage();
-        if (strcmp(argv[1], "--test-memory") == 0) {
-            if (argc == 3) {
+        if (strcmp(argv[1], "--test-memory") == 0)
+		{
+            if (argc == 3)
+			{
                 memtest(atoi(argv[2]),50);
                 exit(0);
-            } else {
+            }
+			else
+			{
                 fprintf(stderr,"Please specify the amount of memory to test in megabytes.\n");
                 fprintf(stderr,"Example: ./redis-server --test-memory 4096\n\n");
                 exit(1);
@@ -3064,44 +3143,59 @@ int main(int argc, char **argv) {
          * configuration file. For instance --port 6380 will generate the
          * string "port 6380\n" to be parsed after the actual file name
          * is parsed, if any. */
-        while(j != argc) {
-            if (argv[j][0] == '-' && argv[j][1] == '-') {
+        while(j != argc)
+		{
+            if (argv[j][0] == '-' && argv[j][1] == '-')
+			{
                 /* Option name */
                 if (sdslen(options)) options = sdscat(options,"\n");
                 options = sdscat(options,argv[j]+2);
                 options = sdscat(options," ");
-            } else {
+            }
+			else
+			{
                 /* Option argument */
                 options = sdscatrepr(options,argv[j],strlen(argv[j]));
                 options = sdscat(options," ");
             }
+
             j++;
         }
+
         resetServerSaveParams();
         loadServerConfig(configfile,options);
         sdsfree(options);
-    } else {
+    }
+	else
+	{
         redisLog(REDIS_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/%s.conf", argv[0], server.sentinel_mode ? "sentinel" : "redis");
     }
 
     if (server.daemonize)
 		daemonize();
+
     initServer();
+
 #ifdef _WIN32
     cowInit();
 #endif
+
     if (server.daemonize)
 		createPidFile();
 
     redisAsciiArt();
 
-    if (!server.sentinel_mode) {
+    if (!server.sentinel_mode)
+	{
         /* Things only needed when not running in Sentinel mode. */
         redisLog(REDIS_WARNING,"Server started, Redis version " REDIS_VERSION);
+
     #ifdef __linux__
         linuxOvercommitMemoryWarning();
     #endif
+
         loadDataFromDisk();
+
         if (server.ipfd > 0)
             redisLog(REDIS_NOTICE,"The server is now ready to accept connections on port %d", server.port);
         if (server.sofd > 0)
@@ -3109,13 +3203,15 @@ int main(int argc, char **argv) {
     }
 
     /* Warning the user about suspicious maxmemory setting. */
-    if (server.maxmemory > 0 && server.maxmemory < 1024*1024) {
+    if (server.maxmemory > 0 && server.maxmemory < 1024*1024)
+	{
         redisLog(REDIS_WARNING,"WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", server.maxmemory);
     }
 
     aeSetBeforeSleepProc(server.el,beforeSleep);
     aeMain(server.el);
     aeDeleteEventLoop(server.el);
+
     return 0;
 }
 

@@ -593,6 +593,7 @@ struct redisServer {
     char *aof_filename;             /* Name of the AOF file */
     int aof_no_fsync_on_rewrite;    /* Don't fsync if a rewrite is in prog. */
     int aof_rewrite_perc;           /* Rewrite AOF if % growth is > M and... */
+
 #ifdef _WIN32
     long long aof_rewrite_min_size;     /* the AOF file is at least N bytes. */
     long long aof_rewrite_base_size;    /* AOF size on latest startup or rewrite. */
@@ -602,6 +603,7 @@ struct redisServer {
     off_t aof_rewrite_base_size;    /* AOF size on latest startup or rewrite. */
     off_t aof_current_size;         /* AOF current size. */
 #endif
+
     int aof_rewrite_scheduled;      /* Rewrite once BGSAVE terminates. */
     pid_t aof_child_pid;            /* PID if rewriting process */
     list *aof_rewrite_buf_blocks;   /* Hold changes during an AOF rewrite. */
@@ -628,6 +630,7 @@ struct redisServer {
     time_t rdb_save_time_start;     /* Current RDB save start time. */
     int lastbgsave_status;          /* REDIS_OK or REDIS_ERR */
     int stop_writes_on_bgsave_err;  /* Don't allow writes if can't BGSAVE */
+
 #ifdef _WIN32
     /* Windows copy on write for AOF and RDB persistence */
     bkgdfsave rdbbkgdfsave;
@@ -637,7 +640,12 @@ struct redisServer {
     bkgdDbExt *cowSaveDbExt;
     redisDb *cowSaveDb;
     bkgditers cowCurIters;
+
+	BOOL isinservicemode;
+	char* basepath;
+	size_t basepathlen;
 #endif
+
     /* Propagation of commands in AOF / replication */
     redisOpArray also_propagate;    /* Additional command to propagate. */
     /* Logging */

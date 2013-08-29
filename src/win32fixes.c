@@ -581,9 +581,9 @@ char *wsa_strerror(int err) {
 #define SERVICE_LAUNCHER "services.exe"
 #define PROCESS_NAME_LEN 1024
 
-BOOL WINAPI executedasservice(void)
+BOOL executedasservice(void)
 {
-	int result = FALSE;
+	BOOL result = FALSE;
 	char *name = (char*)malloc(PROCESS_NAME_LEN);
 
 	getparentprocessname(name);
@@ -596,7 +596,7 @@ BOOL WINAPI executedasservice(void)
 	return result;
 }
 
-BOOL WINAPI getparentprocessname(char* name)
+BOOL getparentprocessname(char* name)
 {
 	BOOL result = FALSE;
 
@@ -611,7 +611,7 @@ BOOL WINAPI getparentprocessname(char* name)
 	return result;
 }
 
-BOOL WINAPI getparentprocessentry(LPPROCESSENTRY32 entry)
+BOOL getparentprocessentry(LPPROCESSENTRY32 entry)
 {
 	BOOL result = FALSE;
 
@@ -626,7 +626,7 @@ BOOL WINAPI getparentprocessentry(LPPROCESSENTRY32 entry)
 	return result;
 }
 
-BOOL WINAPI getselfprocessentry(LPPROCESSENTRY32 entry)
+BOOL getselfprocessentry(LPPROCESSENTRY32 entry)
 {
 	// Get entry from current PID
 	BOOL result = getprocessentry(entry, GetCurrentProcessId());
@@ -634,7 +634,7 @@ BOOL WINAPI getselfprocessentry(LPPROCESSENTRY32 entry)
 	return result;
 }
 
-BOOL WINAPI getprocessentry(LPPROCESSENTRY32 entry, DWORD processID)
+BOOL getprocessentry(LPPROCESSENTRY32 entry, DWORD processID)
 {
 	BOOL result = FALSE;
 	BOOL currentEntry = FALSE;
@@ -667,15 +667,38 @@ BOOL WINAPI getprocessentry(LPPROCESSENTRY32 entry, DWORD processID)
 	return result;
 }
 
+BOOL getservicefilepath(LPSTR buffer, DWORD length)
+{
+	BOOL result = FALSE;
+
+	if (buffer && length > 0)
+	{
+		char drive[_MAX_DRIVE];
+		char dir[_MAX_DIR];
+		char filename[_MAX_FNAME];
+		char extension[_MAX_EXT];
+		DWORD rc = GetModuleFileName(NULL, buffer, length);
+
+		_splitpath((char*)buffer, drive, dir, filename, extension);
+
+		if (dir)
+		{
+			// Re-assemble path without filename
+			_makepath(buffer, drive, dir, NULL, NULL);
+		}
+		
+	}
+
+	return result;
+}
+
 void redisexit(int code)
 {
-	BOOL isservice = executedasservice();
-
-	if (isservice == TRUE)
+	if (executedasservice())
 	{
 		// Service - exit current thread only
 		// This will be detected by RedisDll watching thread which can perform correct shutdown
-		ExitThread(S_OK);
+		_endthread();
 	}
 	else
 	{
@@ -683,7 +706,5 @@ void redisexit(int code)
 		exit(code);
 	}
 }
-
-
 
 #endif

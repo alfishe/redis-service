@@ -35,6 +35,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+
 #ifndef _WIN32
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -59,7 +60,8 @@ void aofUpdateCurrentSize(void);
 
 #define AOF_RW_BUF_BLOCK_SIZE (1024*1024*10)    /* 10 MB per block */
 
-typedef struct aofrwblock {
+typedef struct aofrwblock
+{
     unsigned long used, free;
     char buf[AOF_RW_BUF_BLOCK_SIZE];
 } aofrwblock;
@@ -67,7 +69,8 @@ typedef struct aofrwblock {
 /* This function free the old AOF rewrite buffer if needed, and initialize
  * a fresh new one. It tests for server.aof_rewrite_buf_blocks equal to NULL
  * so can be used for the first initialization as well. */
-void aofRewriteBufferReset(void) {
+void aofRewriteBufferReset(void)
+{
     if (server.aof_rewrite_buf_blocks)
         listRelease(server.aof_rewrite_buf_blocks);
 
@@ -76,29 +79,38 @@ void aofRewriteBufferReset(void) {
 }
 
 /* Return the current size of the AOF rerwite buffer. */
-unsigned long aofRewriteBufferSize(void) {
+unsigned long aofRewriteBufferSize(void)
+{
     unsigned long size;
     listNode *ln = listLast(server.aof_rewrite_buf_blocks);
     aofrwblock *block = (aofrwblock *)(ln ? ln->value : NULL);
 
-    if (block == NULL) return 0;
-    size =
-        (listLength(server.aof_rewrite_buf_blocks)-1) * AOF_RW_BUF_BLOCK_SIZE;
+    if (block == NULL)
+		return 0;
+
+    size = (listLength(server.aof_rewrite_buf_blocks)-1) * AOF_RW_BUF_BLOCK_SIZE;
     size += block->used;
+
     return size;
 }
 
 /* Append data to the AOF rewrite buffer, allocating new blocks if needed. */
-void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
+void aofRewriteBufferAppend(unsigned char *s, unsigned long len)
+{
     listNode *ln = listLast(server.aof_rewrite_buf_blocks);
     aofrwblock *block = (aofrwblock *)(ln ? ln->value : NULL);
 
-    while(len) {
+    while(len)
+	{
         /* If we already got at least an allocated block, try appending
          * at least some piece into it. */
-        if (block) {
+        if (block)
+		{
             unsigned long thislen = (block->free < len) ? block->free : len;
-            if (thislen) {  /* The current block is not already full. */
+
+            if (thislen)
+			{ 
+				/* The current block is not already full. */
                 memcpy(block->buf+block->used, s, thislen);
                 block->used += thislen;
                 block->free -= thislen;
@@ -107,7 +119,9 @@ void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
             }
         }
 
-        if (len) { /* First block to allocate, or need another block. */
+        if (len)
+		{
+			/* First block to allocate, or need another block. */
             int numblocks;
 
             block = (aofrwblock *)zmalloc(sizeof(*block));
@@ -118,7 +132,9 @@ void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
             /* Log every time we cross more 10 or 100 blocks, respectively
              * as a notice or warning. */
             numblocks = listLength(server.aof_rewrite_buf_blocks);
-            if (((numblocks+1) % 10) == 0) {
+
+            if (((numblocks+1) % 10) == 0)
+			{
                 int level = ((numblocks+1) % 100) == 0 ? REDIS_WARNING :
                                                          REDIS_NOTICE;
                 redisLog(level,"Background AOF buffer size: %lu MB",
@@ -131,25 +147,31 @@ void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
 /* Write the buffer (possibly composed of multiple blocks) into the specified
  * fd. If no short write or any other error happens -1 is returned,
  * otherwise the number of bytes written is returned. */
-ssize_t aofRewriteBufferWrite(int fd) {
+ssize_t aofRewriteBufferWrite(int fd)
+{
     listNode *ln;
     listIter li;
     ssize_t count = 0;
 
     listRewind(server.aof_rewrite_buf_blocks,&li);
-    while((ln = listNext(&li))) {
+
+    while((ln = listNext(&li)))
+	{
         aofrwblock *block = (aofrwblock *)listNodeValue(ln);
         ssize_t nwritten;
 
-        if (block->used) {
+        if (block->used)
+		{
             nwritten = write(fd,block->buf,block->used);
             if (nwritten != block->used) {
                 if (nwritten == 0) errno = EIO;
                 return -1;
             }
+
             count += nwritten;
         }
     }
+
     return count;
 }
 
@@ -159,7 +181,8 @@ ssize_t aofRewriteBufferWrite(int fd) {
 
 /* Starts a background task that performs fsync() against the specified
  * file descriptor (the one of the AOF file) in another thread. */
-void aof_background_fsync(int fd) {
+void aof_background_fsync(int fd)
+{
 #ifdef _WIN32
     bioCreateBackgroundJob(REDIS_BIO_AOF_FSYNC,(void*)(size_t)fd,NULL,NULL);
 #else
@@ -169,22 +192,29 @@ void aof_background_fsync(int fd) {
 
 /* Called when the user switches from "appendonly yes" to "appendonly no"
  * at runtime using the CONFIG command. */
-void stopAppendOnly(void) {
+void stopAppendOnly(void)
+{
     redisAssert(server.aof_state != REDIS_AOF_OFF);
     flushAppendOnlyFile(1);
+
     aof_fsync(server.aof_fd);
     close(server.aof_fd);
 
     server.aof_fd = -1;
     server.aof_selected_db = -1;
     server.aof_state = REDIS_AOF_OFF;
+
     /* rewrite operation in progress? kill it, wait child exit */
-    if (server.aof_child_pid != -1) {
+    if (server.aof_child_pid != -1)
+	{
+
 #ifdef _WIN32
         bkgdsave_termthread();
         server.rdbbkgdfsave.state = BKSAVE_IDLE;
+
         /* turn off copy on write */
         cowBkgdSaveStop();
+
         redisLog(REDIS_NOTICE,"Killing running AOF rewrite child: %ld",
             (long) server.aof_child_pid);
 #else
@@ -205,23 +235,31 @@ void stopAppendOnly(void) {
 
 /* Called when the user switches from "appendonly no" to "appendonly yes"
  * at runtime using the CONFIG command. */
-int startAppendOnly(void) {
+int startAppendOnly(void)
+{
     server.aof_last_fsync = server.unixtime;
+
 #ifdef _WIN32
     server.aof_fd = open(server.aof_filename,O_WRONLY|O_APPEND|O_CREAT|_O_BINARY,_S_IREAD|_S_IWRITE);
 #else
     server.aof_fd = open(server.aof_filename,O_WRONLY|O_APPEND|O_CREAT,0644);
 #endif
+
     redisAssert(server.aof_state == REDIS_AOF_OFF);
-    if (server.aof_fd == -1) {
+
+    if (server.aof_fd == -1)
+	{
         redisLog(REDIS_WARNING,"Redis needs to enable the AOF but can't open the append only file: %s",strerror(errno));
         return REDIS_ERR;
     }
-    if (rewriteAppendOnlyFileBackground() == REDIS_ERR) {
+
+    if (rewriteAppendOnlyFileBackground() == REDIS_ERR)
+	{
         close(server.aof_fd);
         redisLog(REDIS_WARNING,"Redis needs to enable the AOF but can't trigger a background AOF rewrite operation. Check the above logs for more info about the error.");
         return REDIS_ERR;
     }
+
     /* We correctly switched on AOF, now wait for the rerwite to be complete
      * in order to append data on disk. */
     server.aof_state = REDIS_AOF_WAIT_REWRITE;
@@ -246,30 +284,38 @@ int startAppendOnly(void) {
  *
  * However if force is set to 1 we'll write regardless of the background
  * fsync. */
-void flushAppendOnlyFile(int force) {
+void flushAppendOnlyFile(int force)
+{
     ssize_t nwritten;
     int sync_in_progress = 0;
 
-    if (sdslen(server.aof_buf) == 0) return;
+    if (sdslen(server.aof_buf) == 0)
+		return;
 
     if (server.aof_fsync == AOF_FSYNC_EVERYSEC)
         sync_in_progress = bioPendingJobsOfType(REDIS_BIO_AOF_FSYNC) != 0;
 
-    if (server.aof_fsync == AOF_FSYNC_EVERYSEC && !force) {
+    if (server.aof_fsync == AOF_FSYNC_EVERYSEC && !force)
+	{
         /* With this append fsync policy we do background fsyncing.
          * If the fsync is still in progress we can try to delay
          * the write for a couple of seconds. */
-        if (sync_in_progress) {
-            if (server.aof_flush_postponed_start == 0) {
+        if (sync_in_progress)
+		{
+            if (server.aof_flush_postponed_start == 0)
+			{
                 /* No previous write postponinig, remember that we are
                  * postponing the flush and return. */
                 server.aof_flush_postponed_start = server.unixtime;
                 return;
-            } else if (server.unixtime - server.aof_flush_postponed_start < 2) {
+            }
+			else if (server.unixtime - server.aof_flush_postponed_start < 2)
+			{
                 /* We were already waiting for fsync to finish, but for less
                  * than two seconds this is still ok. Postpone again. */
                 return;
             }
+
             /* Otherwise fall trough, and go write since we can't wait
              * over two seconds. */
             server.aof_delayed_fsync++;
@@ -286,13 +332,18 @@ void flushAppendOnlyFile(int force) {
      * there is much to do about the whole server stopping for power problems
      * or alike */
     nwritten = write(server.aof_fd,server.aof_buf,(unsigned int)sdslen(server.aof_buf));
-    if (nwritten != (signed)sdslen(server.aof_buf)) {
+
+    if (nwritten != (signed)sdslen(server.aof_buf))
+	{
         /* Ooops, we are in troubles. The best thing to do for now is
          * aborting instead of giving the illusion that everything is
          * working as expected. */
-        if (nwritten == -1) {
+        if (nwritten == -1)
+		{
             redisLog(REDIS_WARNING,"Exiting on error writing to the append-only file: %s",strerror(errno));
-        } else {
+        }
+		else
+		{
             redisLog(REDIS_WARNING,"Exiting on short write while writing to "
                                    "the append-only file: %s (nwritten=%ld, "
                                    "expected=%ld)",
@@ -300,22 +351,28 @@ void flushAppendOnlyFile(int force) {
                                    (long)nwritten,
                                    (long)sdslen(server.aof_buf));
 
-            if (ftruncate(server.aof_fd, server.aof_current_size) == -1) {
+            if (ftruncate(server.aof_fd, server.aof_current_size) == -1)
+			{
                 redisLog(REDIS_WARNING, "Could not remove short write "
                          "from the append-only file.  Redis may refuse "
                          "to load the AOF the next time it starts.  "
                          "ftruncate: %s", strerror(errno));
             }
         }
+
         exit(1);
     }
+
     server.aof_current_size += nwritten;
 
     /* Re-use AOF buffer when it is small enough. The maximum comes from the
      * arena size of 4k minus some overhead (but is otherwise arbitrary). */
-    if ((sdslen(server.aof_buf)+sdsavail(server.aof_buf)) < 4000) {
+    if ((sdslen(server.aof_buf)+sdsavail(server.aof_buf)) < 4000)
+	{
         sdsclear(server.aof_buf);
-    } else {
+    }
+	else
+	{
         sdsfree(server.aof_buf);
         server.aof_buf = sdsempty();
     }
@@ -327,19 +384,23 @@ void flushAppendOnlyFile(int force) {
             return;
 
     /* Perform the fsync if needed. */
-    if (server.aof_fsync == AOF_FSYNC_ALWAYS) {
+    if (server.aof_fsync == AOF_FSYNC_ALWAYS)
+	{
         /* aof_fsync is defined as fdatasync() for Linux in order to avoid
          * flushing metadata. */
         aof_fsync(server.aof_fd); /* Let's try to get this data on the disk */
         server.aof_last_fsync = server.unixtime;
-    } else if ((server.aof_fsync == AOF_FSYNC_EVERYSEC &&
-                server.unixtime > server.aof_last_fsync)) {
+    }
+	else if ((server.aof_fsync == AOF_FSYNC_EVERYSEC &&
+                server.unixtime > server.aof_last_fsync))
+	{
         if (!sync_in_progress) aof_background_fsync(server.aof_fd);
         server.aof_last_fsync = server.unixtime;
     }
 }
 
-sds catAppendOnlyGenericCommand(sds dst, int argc, robj **argv) {
+sds catAppendOnlyGenericCommand(sds dst, int argc, robj **argv)
+{
     char buf[32];
     int len, j;
     robj *o;
@@ -350,7 +411,8 @@ sds catAppendOnlyGenericCommand(sds dst, int argc, robj **argv) {
     buf[len++] = '\n';
     dst = sdscatlen(dst,buf,len);
 
-    for (j = 0; j < argc; j++) {
+    for (j = 0; j < argc; j++)
+	{
         o = getDecodedObject(argv[j]);
         buf[0] = '$';
         len = 1+ll2string(buf+1,sizeof(buf)-1,sdslen(o->ptr));
@@ -361,6 +423,7 @@ sds catAppendOnlyGenericCommand(sds dst, int argc, robj **argv) {
         dst = sdscatlen(dst,"\r\n",2);
         decrRefCount(o);
     }
+
     return dst;
 }
 
@@ -371,25 +434,29 @@ sds catAppendOnlyGenericCommand(sds dst, int argc, robj **argv) {
  * This command is used in order to translate EXPIRE and PEXPIRE commands
  * into PEXPIREAT command so that we retain precision in the append only
  * file, and the time is always absolute and not relative. */
-sds catAppendOnlyExpireAtCommand(sds buf, struct redisCommand *cmd, robj *key, robj *seconds) {
+sds catAppendOnlyExpireAtCommand(sds buf, struct redisCommand *cmd, robj *key, robj *seconds)
+{
     long long when;
     robj *argv[3];
 
     /* Make sure we can use strtol */
     seconds = getDecodedObject(seconds);
-    when = strtoll(seconds->ptr,NULL,10);
+    when = strtoll((char*)seconds->ptr, NULL, 10);
+
     /* Convert argument into milliseconds for EXPIRE, SETEX, EXPIREAT */
     if (cmd->proc == expireCommand || cmd->proc == setexCommand ||
         cmd->proc == expireatCommand)
     {
         when *= 1000;
     }
+
     /* Convert into absolute time for EXPIRE, PEXPIRE, SETEX, PSETEX */
     if (cmd->proc == expireCommand || cmd->proc == pexpireCommand ||
         cmd->proc == setexCommand || cmd->proc == psetexCommand)
     {
         when += mstime();
     }
+
     decrRefCount(seconds);
 
     argv[0] = createStringObject("PEXPIREAT",9);
@@ -398,16 +465,19 @@ sds catAppendOnlyExpireAtCommand(sds buf, struct redisCommand *cmd, robj *key, r
     buf = catAppendOnlyGenericCommand(buf, 3, argv);
     decrRefCount(argv[0]);
     decrRefCount(argv[2]);
+
     return buf;
 }
 
-void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int argc) {
+void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int argc)
+{
     sds buf = sdsempty();
     robj *tmpargv[3];
 
     /* The DB this command was targeting is not the same as the last command
      * we appendend. To issue a SELECT command is needed. */
-    if (dictid != server.aof_selected_db) {
+    if (dictid != server.aof_selected_db)
+	{
         char seldb[64];
 
         snprintf(seldb,sizeof(seldb),"%d",dictid);
@@ -417,10 +487,12 @@ void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int a
     }
 
     if (cmd->proc == expireCommand || cmd->proc == pexpireCommand ||
-        cmd->proc == expireatCommand) {
+        cmd->proc == expireatCommand)
+	{
         /* Translate EXPIRE/PEXPIRE/EXPIREAT into PEXPIREAT */
         buf = catAppendOnlyExpireAtCommand(buf,cmd,argv[1],argv[2]);
-    } else if (cmd->proc == setexCommand || cmd->proc == psetexCommand) {
+    }
+	else if (cmd->proc == setexCommand || cmd->proc == psetexCommand) {
         /* Translate SETEX/PSETEX to SET and PEXPIREAT */
         tmpargv[0] = createStringObject("SET",3);
         tmpargv[1] = argv[1];
@@ -428,7 +500,9 @@ void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int a
         buf = catAppendOnlyGenericCommand(buf,3,tmpargv);
         decrRefCount(tmpargv[0]);
         buf = catAppendOnlyExpireAtCommand(buf,cmd,argv[1],argv[2]);
-    } else {
+    }
+	else
+	{
         /* All the other commands don't need translation or need the
          * same translation already operated in the command vector
          * for the replication itself. */
@@ -457,8 +531,9 @@ void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int a
 
 /* In Redis commands are always executed in the context of a client, so in
  * order to load the append only file we need to create a fake client. */
-struct redisClient *createFakeClient(void) {
-    struct redisClient *c = zmalloc(sizeof(*c));
+struct redisClient *createFakeClient(void)
+{
+    struct redisClient *c = (struct redisClient*)zmalloc(sizeof(*c));
 
     selectDb(c,0);
     c->fd = -1;
@@ -479,10 +554,12 @@ struct redisClient *createFakeClient(void) {
     listSetFreeMethod(c->reply,decrRefCount);
     listSetDupMethod(c->reply,dupClientReplyValue);
     initClientMultiState(c);
+
     return c;
 }
 
-void freeFakeClient(struct redisClient *c) {
+void freeFakeClient(struct redisClient *c)
+{
     sdsfree(c->querybuf);
     listRelease(c->reply);
     listRelease(c->watched_keys);
@@ -493,7 +570,8 @@ void freeFakeClient(struct redisClient *c) {
 /* Replay the append log file. On error REDIS_OK is returned. On non fatal
  * error (the append only file is zero-length) REDIS_ERR is returned. On
  * fatal error an error message is logged and the program exists. */
-int loadAppendOnlyFile(char *filename) {
+int loadAppendOnlyFile(char *filename)
+{
     struct redisClient *fakeClient;
 #ifdef _WIN32
     FILE *fp = fopen(filename,"rb");
@@ -504,13 +582,15 @@ int loadAppendOnlyFile(char *filename) {
     int old_aof_state = server.aof_state;
     long loops = 0;
 
-    if (fp && redis_fstat(fileno(fp),&sb) != -1 && sb.st_size == 0) {
+    if (fp && redis_fstat(fileno(fp),&sb) != -1 && sb.st_size == 0)
+	{
         server.aof_current_size = 0;
         fclose(fp);
         return REDIS_ERR;
     }
 
-    if (fp == NULL) {
+    if (fp == NULL)
+	{
         redisLog(REDIS_WARNING,"Fatal error: can't open the append log file for reading: %s",strerror(errno));
         exit(1);
     }
@@ -522,7 +602,8 @@ int loadAppendOnlyFile(char *filename) {
     fakeClient = createFakeClient();
     startLoading(fp);
 
-    while(1) {
+    while(1)
+	{
         int argc, j;
 #ifdef _WIN32
         size_t len;
@@ -535,38 +616,54 @@ int loadAppendOnlyFile(char *filename) {
         struct redisCommand *cmd;
 
         /* Serve the clients from time to time */
-        if (!(loops++ % 1000)) {
+        if (!(loops++ % 1000))
+		{
             loadingProgress((off_t)ftello(fp));
             aeProcessEvents(server.el, AE_FILE_EVENTS|AE_DONT_WAIT);
         }
 
-        if (fgets(buf,sizeof(buf),fp) == NULL) {
+        if (fgets(buf,sizeof(buf), fp) == NULL)
+		{
             if (feof(fp))
                 break;
             else
                 goto readerr;
         }
-        if (buf[0] != '*') goto fmterr;
-        argc = atoi(buf+1);
-        if (argc < 1) goto fmterr;
 
-        argv = zmalloc(sizeof(robj*)*argc);
-        for (j = 0; j < argc; j++) {
-            if (fgets(buf,sizeof(buf),fp) == NULL) goto readerr;
-            if (buf[0] != '$') goto fmterr;
-            len = strtol(buf+1,NULL,10);
-            argsds = sdsnewlen(NULL,len);
-            if (len && fread(argsds,len,1,fp) == 0) goto fmterr;
-            argv[j] = createObject(REDIS_STRING,argsds);
-            if (fread(buf,2,1,fp) == 0) goto fmterr; /* discard CRLF */
+        if (buf[0] != '*')
+			goto fmterr;
+        argc = atoi(buf + 1);
+        if (argc < 1)
+			goto fmterr;
+
+        argv = (robj**)zmalloc(sizeof(robj*)*argc);
+
+        for (j = 0; j < argc; j++)
+		{
+            if (fgets(buf, sizeof(buf), fp) == NULL)
+				goto readerr;
+            if (buf[0] != '$')
+				goto fmterr;
+
+            len = strtol(buf + 1, NULL, 10);
+            argsds = sdsnewlen(NULL, len);
+
+            if (len && fread(argsds, len, 1, fp) == 0)
+				goto fmterr;
+
+            argv[j] = createObject(REDIS_STRING, argsds);
+            if (fread(buf, 2, 1, fp) == 0)
+				goto fmterr; /* discard CRLF */
         }
 
         /* Command lookup */
-        cmd = lookupCommand(argv[0]->ptr);
-        if (!cmd) {
+        cmd = lookupCommand((sds)argv[0]->ptr);
+        if (!cmd)
+		{
             redisLog(REDIS_WARNING,"Unknown command '%s' reading the append only file", argv[0]->ptr);
             exit(1);
         }
+
         /* Run the command in the context of a fake client */
         fakeClient->argc = argc;
         fakeClient->argv = argv;
@@ -597,11 +694,15 @@ int loadAppendOnlyFile(char *filename) {
     return REDIS_OK;
 
 readerr:
-    if (feof(fp)) {
+    if (feof(fp))
+	{
         redisLog(REDIS_WARNING,"Unexpected end of file reading the append only file");
-    } else {
+    }
+	else
+	{
         redisLog(REDIS_WARNING,"Unrecoverable error reading the append only file: %s", strerror(errno));
     }
+
     exit(1);
 fmterr:
     redisLog(REDIS_WARNING,"Bad file format reading the append only file: make a backup of your AOF file, then use ./redis-check-aof --fix <filename>");
@@ -616,24 +717,32 @@ fmterr:
 
 /* Delegate writing an object to writing a bulk string or bulk long long.
  * This is not placed in rio.c since that adds the redis.h dependency. */
-int rioWriteBulkObject(rio *r, robj *obj) {
+int rioWriteBulkObject(rio *r, robj *obj)
+{
     /* Avoid using getDecodedObject to help copy-on-write (we are often
      * in a child process when this function is called). */
-    if (obj->encoding == REDIS_ENCODING_INT) {
-        return (int)rioWriteBulkLongLong(r,(long)obj->ptr);
-    } else if (obj->encoding == REDIS_ENCODING_RAW) {
-        return (int)rioWriteBulkString(r,obj->ptr,sdslen(obj->ptr));
-    } else {
+    if (obj->encoding == REDIS_ENCODING_INT)
+	{
+        return (int)rioWriteBulkLongLong(r, (long)obj->ptr);
+    }
+	else if (obj->encoding == REDIS_ENCODING_RAW)
+	{
+        return (int)rioWriteBulkString(r, (char*)obj->ptr, sdslen((sds)obj->ptr));
+    }
+	else
+	{
         redisPanic("Unknown string encoding");
     }
 }
 
 /* Emit the commands needed to rebuild a list object.
  * The function returns 0 on error, 1 on success. */
-int rewriteListObject(rio *r, robj *key, robj *o) {
+int rewriteListObject(rio *r, robj *key, robj *o)
+{
     long long count = 0, items = listTypeLength(o);
 
-    if (o->encoding == REDIS_ENCODING_ZIPLIST) {
+    if (o->encoding == REDIS_ENCODING_ZIPLIST)
+	{
         unsigned char *zl = o->ptr;
         unsigned char *p = ziplistIndex(zl,0);
         unsigned char *vstr;
@@ -643,108 +752,155 @@ int rewriteListObject(rio *r, robj *key, robj *o) {
 #ifdef _WIN32
         cowUnlock();
 #endif
-        while(ziplistGet(p,&vstr,&vlen,&vlong)) {
-            if (count == 0) {
+        while(ziplistGet(p,&vstr,&vlen,&vlong))
+		{
+            if (count == 0)
+			{
                 int cmd_items = (items > REDIS_AOF_REWRITE_ITEMS_PER_CMD) ?
                     REDIS_AOF_REWRITE_ITEMS_PER_CMD : (int)items;
 
-                if (rioWriteBulkCount(r,'*',2+cmd_items) == 0) return 0;
-                if (rioWriteBulkString(r,"RPUSH",5) == 0) return 0;
-                if (rioWriteBulkObject(r,key) == 0) return 0;
+                if (rioWriteBulkCount(r,'*',2+cmd_items) == 0)
+					return 0;
+                if (rioWriteBulkString(r,"RPUSH",5) == 0)
+					return 0;
+                if (rioWriteBulkObject(r,key) == 0)
+					return 0;
             }
-            if (vstr) {
-                if (rioWriteBulkString(r,(char*)vstr,vlen) == 0) return 0;
-            } else {
-                if (rioWriteBulkLongLong(r,vlong) == 0) return 0;
+
+            if (vstr)
+			{
+                if (rioWriteBulkString(r,(char*)vstr,vlen) == 0)
+					return 0;
             }
+			else
+			{
+                if (rioWriteBulkLongLong(r,vlong) == 0)
+					return 0;
+            }
+
             p = ziplistNext(zl,p);
             if (++count == REDIS_AOF_REWRITE_ITEMS_PER_CMD) count = 0;
             items--;
         }
 #ifdef _WIN32
-    } else if (o->encoding == REDIS_ENCODING_LINKEDLIST ||
-               o->encoding == REDIS_ENCODING_LINKEDLISTARRAY) {
+    }
+	else if (o->encoding == REDIS_ENCODING_LINKEDLIST ||
+               o->encoding == REDIS_ENCODING_LINKEDLISTARRAY)
+	{
         roListIter li;
         listNode *ln;
 
-        if (o->encoding == REDIS_ENCODING_LINKEDLIST) {
+        if (o->encoding == REDIS_ENCODING_LINKEDLIST)
+		{
             list *list = o->ptr;
             roListRewind(list, NULL, &li);
-        } else {
+        }
+		else
+		{
             cowListArray *ar = (cowListArray *)o->ptr;
             roListRewind(NULL, ar, &li);
         }
+
         cowUnlock();
 
-        while((ln = roListNext(&li))) {
+        while((ln = roListNext(&li)))
+		{
 #else
-    } else if (o->encoding == REDIS_ENCODING_LINKEDLIST) {
+    }
+	else if (o->encoding == REDIS_ENCODING_LINKEDLIST)
+	{
         list *list = o->ptr;
         listNode *ln;
         listIter li;
 
         listRewind(list,&li);
-        while((ln = listNext(&li))) {
+        while((ln = listNext(&li)))
+		{
 #endif
             robj *eleobj = listNodeValue(ln);
 
-            if (count == 0) {
+            if (count == 0)
+			{
                 int cmd_items = (items > REDIS_AOF_REWRITE_ITEMS_PER_CMD) ?
                     REDIS_AOF_REWRITE_ITEMS_PER_CMD : (int)items;
 
-                if (rioWriteBulkCount(r,'*',2+cmd_items) == 0) return 0;
-                if (rioWriteBulkString(r,"RPUSH",5) == 0) return 0;
-                if (rioWriteBulkObject(r,key) == 0) return 0;
+                if (rioWriteBulkCount(r,'*',2+cmd_items) == 0)
+					return 0;
+                if (rioWriteBulkString(r,"RPUSH",5) == 0)
+					return 0;
+                if (rioWriteBulkObject(r,key) == 0)
+					return 0;
             }
-            if (rioWriteBulkObject(r,eleobj) == 0) return 0;
-            if (++count == REDIS_AOF_REWRITE_ITEMS_PER_CMD) count = 0;
+            if (rioWriteBulkObject(r,eleobj) == 0)
+				return 0;
+            if (++count == REDIS_AOF_REWRITE_ITEMS_PER_CMD)
+				count = 0;
             items--;
         }
-    } else {
+    }
+	else
+	{
 #ifdef _WIN32
         cowUnlock();
 #endif
         redisPanic("Unknown list encoding");
     }
+
     return 1;
 }
 
 /* Emit the commands needed to rebuild a set object.
  * The function returns 0 on error, 1 on success. */
-int rewriteSetObject(rio *r, robj *key, robj *o) {
+int rewriteSetObject(rio *r, robj *key, robj *o)
+{
     long long count = 0, items = setTypeSize(o);
 
-    if (o->encoding == REDIS_ENCODING_INTSET) {
+    if (o->encoding == REDIS_ENCODING_INTSET)
+	{
         int ii = 0;
         int64_t llval;
 
 #ifdef _WIN32
         cowUnlock();
 #endif
-        while(intsetGet(o->ptr,ii++,&llval)) {
-            if (count == 0) {
+        while(intsetGet((intset*)o->ptr, ii++, &llval))
+		{
+            if (count == 0)
+			{
                 int cmd_items = (items > REDIS_AOF_REWRITE_ITEMS_PER_CMD) ?
                     REDIS_AOF_REWRITE_ITEMS_PER_CMD : (int)items;
 
-                if (rioWriteBulkCount(r,'*',2+cmd_items) == 0) return 0;
-                if (rioWriteBulkString(r,"SADD",4) == 0) return 0;
-                if (rioWriteBulkObject(r,key) == 0) return 0;
+                if (rioWriteBulkCount(r,'*',2+cmd_items) == 0)
+					return 0;
+                if (rioWriteBulkString(r,"SADD",4) == 0)
+					return 0;
+                if (rioWriteBulkObject(r,key) == 0)
+					return 0;
             }
-            if (rioWriteBulkLongLong(r,llval) == 0) return 0;
-            if (++count == REDIS_AOF_REWRITE_ITEMS_PER_CMD) count = 0;
+
+            if (rioWriteBulkLongLong(r,llval) == 0)
+				return 0;
+            if (++count == REDIS_AOF_REWRITE_ITEMS_PER_CMD)
+				count = 0;
             items--;
         }
 #ifdef _WIN32
-    } else if (o->encoding == REDIS_ENCODING_HT ||
-               o->encoding == REDIS_ENCODING_HTARRAY) {
+    }
+	else if (o->encoding == REDIS_ENCODING_HT ||
+               o->encoding == REDIS_ENCODING_HTARRAY)
+	{
         roDictIter *di;
         dictEntry *de;
-        if (o->encoding == REDIS_ENCODING_HT) {
-            di = roDictGetIterator(o->ptr, NULL);
-        } else {
+        if (o->encoding == REDIS_ENCODING_HT)
+		{
+            di = roDictGetIterator((dict*)o->ptr, NULL);
+        }
+		else
+		{
             cowDictArray *ar = (cowDictArray *)o->ptr;
             di = roDictGetIterator(NULL, ar);
         }
+
         cowUnlock();
 
         while((de = roDictNext(di)) != NULL) {
@@ -755,17 +911,23 @@ int rewriteSetObject(rio *r, robj *key, robj *o) {
 
         while((de = dictNext(di)) != NULL) {
 #endif
-            robj *eleobj = dictGetKey(de);
-            if (count == 0) {
+            robj *eleobj = (robj*)dictGetKey(de);
+            if (count == 0)
+			{
                 int cmd_items = (items > REDIS_AOF_REWRITE_ITEMS_PER_CMD) ?
                     REDIS_AOF_REWRITE_ITEMS_PER_CMD : (int)items;
 
-                if (rioWriteBulkCount(r,'*',2+cmd_items) == 0) return 0;
-                if (rioWriteBulkString(r,"SADD",4) == 0) return 0;
-                if (rioWriteBulkObject(r,key) == 0) return 0;
+                if (rioWriteBulkCount(r,'*',2+cmd_items) == 0)
+					return 0;
+                if (rioWriteBulkString(r,"SADD",4) == 0)
+					return 0;
+                if (rioWriteBulkObject(r,key) == 0)
+					return 0;
             }
-            if (rioWriteBulkObject(r,eleobj) == 0) return 0;
-            if (++count == REDIS_AOF_REWRITE_ITEMS_PER_CMD) count = 0;
+            if (rioWriteBulkObject(r,eleobj) == 0)
+				return 0;
+            if (++count == REDIS_AOF_REWRITE_ITEMS_PER_CMD)
+				count = 0;
             items--;
         }
 #ifdef _WIN32
@@ -773,22 +935,27 @@ int rewriteSetObject(rio *r, robj *key, robj *o) {
 #else
         dictReleaseIterator(di);
 #endif
-    } else {
+    }
+	else
+	{
 #ifdef _WIN32
         cowUnlock();
 #endif
         redisPanic("Unknown set encoding");
     }
+
     return 1;
 }
 
 /* Emit the commands needed to rebuild a sorted set object.
  * The function returns 0 on error, 1 on success. */
-int rewriteSortedSetObject(rio *r, robj *key, robj *o) {
+int rewriteSortedSetObject(rio *r, robj *key, robj *o)
+{
     long long count = 0, items = zsetLength(o);
 
-    if (o->encoding == REDIS_ENCODING_ZIPLIST) {
-        unsigned char *zl = o->ptr;
+    if (o->encoding == REDIS_ENCODING_ZIPLIST)
+	{
+        unsigned char *zl = (char*)o->ptr;
         unsigned char *eptr, *sptr;
         unsigned char *vstr;
         unsigned int vlen;
@@ -803,66 +970,95 @@ int rewriteSortedSetObject(rio *r, robj *key, robj *o) {
         sptr = ziplistNext(zl,eptr);
         redisAssert(sptr != NULL);
 
-        while (eptr != NULL) {
+        while (eptr != NULL)
+		{
             redisAssert(ziplistGet(eptr,&vstr,&vlen,&vll));
             score = zzlGetScore(sptr);
 
-            if (count == 0) {
+            if (count == 0)
+			{
                 int cmd_items = (items > REDIS_AOF_REWRITE_ITEMS_PER_CMD) ?
                     REDIS_AOF_REWRITE_ITEMS_PER_CMD : (int)items;
 
-                if (rioWriteBulkCount(r,'*',2+cmd_items*2) == 0) return 0;
-                if (rioWriteBulkString(r,"ZADD",4) == 0) return 0;
-                if (rioWriteBulkObject(r,key) == 0) return 0;
+                if (rioWriteBulkCount(r,'*',2+cmd_items*2) == 0)
+					return 0;
+                if (rioWriteBulkString(r,"ZADD",4) == 0)
+					return 0;
+                if (rioWriteBulkObject(r,key) == 0)
+					return 0;
             }
-            if (rioWriteBulkDouble(r,score) == 0) return 0;
-            if (vstr != NULL) {
-                if (rioWriteBulkString(r,(char*)vstr,vlen) == 0) return 0;
-            } else {
-                if (rioWriteBulkLongLong(r,vll) == 0) return 0;
+            if (rioWriteBulkDouble(r,score) == 0)
+				return 0;
+            if (vstr != NULL)
+			{
+                if (rioWriteBulkString(r,(char*)vstr,vlen) == 0)
+					return 0;
             }
+			else
+			{
+                if (rioWriteBulkLongLong(r,vll) == 0)
+					return 0;
+            }
+
             zzlNext(zl,&eptr,&sptr);
-            if (++count == REDIS_AOF_REWRITE_ITEMS_PER_CMD) count = 0;
+            if (++count == REDIS_AOF_REWRITE_ITEMS_PER_CMD)
+				count = 0;
             items--;
         }
 #ifdef _WIN32
-    } else if (o->encoding == REDIS_ENCODING_SKIPLIST ||
-               o->encoding == REDIS_ENCODING_HTZARRAY) {
+    }
+	else if (o->encoding == REDIS_ENCODING_SKIPLIST ||
+               o->encoding == REDIS_ENCODING_HTZARRAY)
+	{
         roZDictIter *di;
         dictEntry *de;
 
-        if (o->encoding == REDIS_ENCODING_SKIPLIST) {
+        if (o->encoding == REDIS_ENCODING_SKIPLIST)
+		{
             zset *zs = o->ptr;
             di = roZDictGetIterator(zs->dict, NULL);
-        } else {
+        }
+		else
+		{
             cowDictZArray *ar = (cowDictZArray *)o->ptr;
             di = roZDictGetIterator(NULL, ar);
         }
 
         cowUnlock();
-        while((de = roZDictNext(di)) != NULL) {
+        while((de = roZDictNext(di)) != NULL)
 #else
-    } else if (o->encoding == REDIS_ENCODING_SKIPLIST) {
+    }
+	else if (o->encoding == REDIS_ENCODING_SKIPLIST)
+	{
         zset *zs = o->ptr;
         dictIterator *di = dictGetIterator(zs->dict);
         dictEntry *de;
 
-        while((de = dictNext(di)) != NULL) {
+        while((de = dictNext(di)) != NULL)
 #endif
-            robj *eleobj = dictGetKey(de);
-            double *score = dictGetVal(de);
+		{
+            robj *eleobj =  (robj*)dictGetKey(de);
+            double *score = (double*)dictGetVal(de);
 
-            if (count == 0) {
+            if (count == 0)
+			{
                 int cmd_items = (items > REDIS_AOF_REWRITE_ITEMS_PER_CMD) ?
                     REDIS_AOF_REWRITE_ITEMS_PER_CMD : (int)items;
 
-                if (rioWriteBulkCount(r,'*',2+cmd_items*2) == 0) return 0;
-                if (rioWriteBulkString(r,"ZADD",4) == 0) return 0;
-                if (rioWriteBulkObject(r,key) == 0) return 0;
+                if (rioWriteBulkCount(r,'*',2 + cmd_items * 2) == 0)
+					return 0;
+                if (rioWriteBulkString(r,"ZADD",4) == 0)
+					return 0;
+                if (rioWriteBulkObject(r,key) == 0)
+					return 0;
             }
-            if (rioWriteBulkDouble(r,*score) == 0) return 0;
-            if (rioWriteBulkObject(r,eleobj) == 0) return 0;
-            if (++count == REDIS_AOF_REWRITE_ITEMS_PER_CMD) count = 0;
+
+            if (rioWriteBulkDouble(r, *score) == 0)
+				return 0;
+            if (rioWriteBulkObject(r, eleobj) == 0)
+				return 0;
+            if (++count == REDIS_AOF_REWRITE_ITEMS_PER_CMD)
+				count = 0;
             items--;
         }
 #ifdef _WIN32
@@ -870,7 +1066,9 @@ int rewriteSortedSetObject(rio *r, robj *key, robj *o) {
 #else
         dictReleaseIterator(di);
 #endif
-    } else {
+    }
+	else
+	{
 #ifdef _WIN32
         cowUnlock();
 #endif
@@ -885,8 +1083,10 @@ int rewriteSortedSetObject(rio *r, robj *key, robj *o) {
  * either REDIS_HASH_KEY or REDIS_HASH_VALUE.
  *
  * The function returns 0 on error, non-zero on success. */
-static int rioWriteHashIteratorCursor(rio *r, hashTypeIterator *hi, int what) {
-    if (hi->encoding == REDIS_ENCODING_ZIPLIST) {
+static int rioWriteHashIteratorCursor(rio *r, hashTypeIterator *hi, int what)
+{
+    if (hi->encoding == REDIS_ENCODING_ZIPLIST)
+	{
         unsigned char *vstr = NULL;
         unsigned int vlen = UINT_MAX;
         long long vll = LLONG_MAX;
@@ -898,7 +1098,9 @@ static int rioWriteHashIteratorCursor(rio *r, hashTypeIterator *hi, int what) {
             return (int)rioWriteBulkLongLong(r, vll);
         }
 
-    } else if (hi->encoding == REDIS_ENCODING_HT) {
+    }
+	else if (hi->encoding == REDIS_ENCODING_HT)
+	{
         robj *value;
 
         hashTypeCurrentFromHashTable(hi, what, &value);
@@ -913,14 +1115,19 @@ static int rioWriteHashIteratorCursor(rio *r, hashTypeIterator *hi, int what) {
 /* Wrap rioWriteHashIteratorCursor to handle the read only array if appropriate
  *
  * The function returns 0 on error, non-zero on success. */
-static int rioWriteRoHashIteratorCursor(rio *r, roHashIter *rohi, int what) {
+static int rioWriteRoHashIteratorCursor(rio *r, roHashIter *rohi, int what)
+{
     int enc = roHashGetEncoding(rohi);
-    if (enc == REDIS_ENCODING_HTARRAY) {
+
+    if (enc == REDIS_ENCODING_HTARRAY)
+	{
         robj *value;
 
         roHashGetCurrentFromArray(rohi, what, &value);
         return rioWriteBulkObject(r, value);
-    } else {
+    }
+	else
+	{
         hashTypeIterator * hi = (hashTypeIterator *)roHashGetHashIter(rohi);
         return rioWriteHashIteratorCursor(r, hi, what);
     }
@@ -934,25 +1141,37 @@ int rewriteHashObject(rio *r, robj *key, robj *o) {
     roHashIter *rohi;
     long long count = 0, items = hashTypeLength(o);
 
-    if (o->encoding == REDIS_ENCODING_HTARRAY) {
+    if (o->encoding == REDIS_ENCODING_HTARRAY)
+	{
         cowDictArray *ar = (cowDictArray *)o->ptr;
         rohi = roHashGetIterator(NULL, ar);
-    } else {
+    }
+	else
+	{
         rohi = roHashGetIterator(o, NULL);
     }
-    while (roHashNext(rohi) != REDIS_ERR) {
-        if (count == 0) {
+
+    while (roHashNext(rohi) != REDIS_ERR)
+	{
+        if (count == 0)
+		{
             int cmd_items = (items > REDIS_AOF_REWRITE_ITEMS_PER_CMD) ?
                 REDIS_AOF_REWRITE_ITEMS_PER_CMD : (int)items;
 
-            if (rioWriteBulkCount(r,'*',2+cmd_items*2) == 0) return 0;
-            if (rioWriteBulkString(r,"HMSET",5) == 0) return 0;
-            if (rioWriteBulkObject(r,key) == 0) return 0;
+            if (rioWriteBulkCount(r,'*',2+cmd_items*2) == 0)
+				return 0;
+            if (rioWriteBulkString(r,"HMSET",5) == 0)
+				return 0;
+            if (rioWriteBulkObject(r,key) == 0)
+				return 0;
         }
 
-        if (rioWriteRoHashIteratorCursor(r, rohi, REDIS_HASH_KEY) == 0) return 0;
-        if (rioWriteRoHashIteratorCursor(r, rohi, REDIS_HASH_VALUE) == 0) return 0;
-        if (++count == REDIS_AOF_REWRITE_ITEMS_PER_CMD) count = 0;
+        if (rioWriteRoHashIteratorCursor(r, rohi, REDIS_HASH_KEY) == 0)
+			return 0;
+        if (rioWriteRoHashIteratorCursor(r, rohi, REDIS_HASH_VALUE) == 0)
+			return 0;
+        if (++count == REDIS_AOF_REWRITE_ITEMS_PER_CMD)
+			count = 0;
         items--;
     }
 
@@ -963,12 +1182,14 @@ int rewriteHashObject(rio *r, robj *key, robj *o) {
 #else
 /* Emit the commands needed to rebuild a hash object.
  * The function returns 0 on error, 1 on success. */
-int rewriteHashObject(rio *r, robj *key, robj *o) {
+int rewriteHashObject(rio *r, robj *key, robj *o)
+{
     hashTypeIterator *hi;
     long long count = 0, items = hashTypeLength(o);
 
     hi = hashTypeInitIterator(o);
-    while (hashTypeNext(hi) != REDIS_ERR) {
+    while (hashTypeNext(hi) != REDIS_ERR)
+	{
         if (count == 0) {
             int cmd_items = (items > REDIS_AOF_REWRITE_ITEMS_PER_CMD) ?
                 REDIS_AOF_REWRITE_ITEMS_PER_CMD : items;
@@ -978,9 +1199,12 @@ int rewriteHashObject(rio *r, robj *key, robj *o) {
             if (rioWriteBulkObject(r,key) == 0) return 0;
         }
 
-        if (rioWriteHashIteratorCursor(r, hi, REDIS_HASH_KEY) == 0) return 0;
-        if (rioWriteHashIteratorCursor(r, hi, REDIS_HASH_VALUE) == 0) return 0;
-        if (++count == REDIS_AOF_REWRITE_ITEMS_PER_CMD) count = 0;
+        if (rioWriteHashIteratorCursor(r, hi, REDIS_HASH_KEY) == 0)
+			return 0;
+        if (rioWriteHashIteratorCursor(r, hi, REDIS_HASH_VALUE) == 0)
+			return 0;
+        if (++count == REDIS_AOF_REWRITE_ITEMS_PER_CMD)
+			count = 0;
         items--;
     }
 
@@ -997,7 +1221,8 @@ int rewriteHashObject(rio *r, robj *key, robj *o) {
  * log Redis uses variadic commands when possible, such as RPUSH, SADD
  * and ZADD. However at max REDIS_AOF_REWRITE_ITEMS_PER_CMD items per time
  * are inserted using a single command. */
-int rewriteAppendOnlyFile(char *filename) {
+int rewriteAppendOnlyFile(char *filename)
+{
 #ifdef _WIN32
     roDictIter *di = NULL;
 #else
@@ -1013,34 +1238,43 @@ int rewriteAppendOnlyFile(char *filename) {
 
     /* Note that we have to use a different temp name here compared to the
      * one used by rewriteAppendOnlyFileBackground() function. */
-    snprintf(tmpfile,256,"temp-rewriteaof-%d.aof", (int) getpid());
+    snprintf(tmpfile, 256, "temp-rewriteaof-%d.aof", (int) getpid());
+
 #ifdef _WIN32
-    fp = fopen(tmpfile,"wb");
+    fp = fopen(tmpfile, "wb");
 #else
     fp = fopen(tmpfile,"w");
 #endif
-    if (!fp) {
+
+    if (!fp)
+	{
         redisLog(REDIS_WARNING, "Opening the temp file for AOF rewrite in rewriteAppendOnlyFile(): %s", strerror(errno));
         return REDIS_ERR;
     }
 
     rioInitWithFile(&aof,fp);
-    for (j = 0; j < server.dbnum; j++) {
+
+    for (j = 0; j < server.dbnum; j++)
+	{
         char selectcmd[] = "*2\r\n$6\r\nSELECT\r\n";
         redisDb *db = server.db+j;
         dict *d;
 
 #ifdef _WIN32
         cowLock();
-        if (server.isBackgroundSaving == 1) {
+        if (server.isBackgroundSaving == 1)
+		{
             /* use background DB copy */
             db = server.cowSaveDb+j;
         }
+
         d = db->dict;
-        if (dictSize(d) == 0) {
+        if (dictSize(d) == 0)
+		{
             cowUnlock();
             continue;
         }
+
         di = roDBGetIterator(j);
         /* to prevent rehash of expires from background thread, get safe iterator */
         expIter = dictGetSafeIterator(db->expires);
@@ -1050,75 +1284,114 @@ int rewriteAppendOnlyFile(char *filename) {
         if (dictSize(d) == 0) continue;
         di = dictGetSafeIterator(d);
 #endif
-        if (!di) {
+        if (!di)
+		{
             fclose(fp);
             return REDIS_ERR;
         }
 
         /* SELECT the new DB */
-        if (rioWrite(&aof,selectcmd,sizeof(selectcmd)-1) == 0) goto werr;
-        if (rioWriteBulkLongLong(&aof,j) == 0) goto werr;
+        if (rioWrite(&aof,selectcmd,sizeof(selectcmd)-1) == 0)
+			goto werr;
+        if (rioWriteBulkLongLong(&aof,j) == 0)
+			goto werr;
 
         /* Iterate this DB writing every entry */
 #ifdef _WIN32
-        while((de = roDictNext(di)) != NULL) {
+        while((de = roDictNext(di)) != NULL)
 #else
-        while((de = dictNext(di)) != NULL) {
+        while((de = dictNext(di)) != NULL)
 #endif
+		{
             sds keystr;
             robj key, *o;
             long long expiretime;
 
-            keystr = dictGetKey(de);
-            o = dictGetVal(de);
-            initStaticStringObject(key,keystr);
+            keystr = (sds)dictGetKey(de);
+            o = (robj*)dictGetVal(de);
+
+            initStaticStringObject(key, keystr);
+
 #ifdef _WIN32
-            expiretime = getExpireForSave(db,&key);
+            expiretime = getExpireForSave(db, &key);
 #else
-            expiretime = getExpire(db,&key);
+            expiretime = getExpire(db, &key);
 #endif
 
             cowLock();
+
 #ifdef _WIN32
             if (o->type == REDIS_LIST ||
                 o->type == REDIS_SET ||
                 o->type == REDIS_ZSET ||
-                o->type == REDIS_HASH) {
-                    o = (robj *)getRoConvertedObj(keystr, o);
+                o->type == REDIS_HASH)
+			{
+                    o = (robj*)getRoConvertedObj(keystr, o);
             }
 #endif
             /* Save the key and associated value */
-            if (o->type == REDIS_STRING) {
+            if (o->type == REDIS_STRING)
+			{
                 /* Emit a SET command */
                 char cmd[]="*3\r\n$3\r\nSET\r\n";
                 cowUnlock();
-                if (rioWrite(&aof,cmd,sizeof(cmd)-1) == 0) goto werr;
+
+                if (rioWrite(&aof, cmd, sizeof(cmd) - 1) == 0)
+					goto werr;
+
                 /* Key and value */
-                if (rioWriteBulkObject(&aof,&key) == 0) goto werr;
-                if (rioWriteBulkObject(&aof,o) == 0) goto werr;
-            } else if (o->type == REDIS_LIST) {
-                if (rewriteListObject(&aof,&key,o) == 0) goto werr;
-            } else if (o->type == REDIS_SET) {
-                if (rewriteSetObject(&aof,&key,o) == 0) goto werr;
-            } else if (o->type == REDIS_ZSET) {
-                if (rewriteSortedSetObject(&aof,&key,o) == 0) goto werr;
-            } else if (o->type == REDIS_HASH) {
-                if (rewriteHashObject(&aof,&key,o) == 0) goto werr;
-            } else {
+                if (rioWriteBulkObject(&aof, &key) == 0)
+					goto werr;
+                if (rioWriteBulkObject(&aof, o) == 0)
+					goto werr;
+
+            }
+			else if (o->type == REDIS_LIST)
+			{
+                if (rewriteListObject(&aof, &key,o) == 0)
+					goto werr;
+            }
+			else if (o->type == REDIS_SET)
+			{
+                if (rewriteSetObject(&aof, &key,o) == 0)
+					goto werr;
+            }
+			else if (o->type == REDIS_ZSET)
+			{
+                if (rewriteSortedSetObject(&aof, &key,o) == 0)
+					goto werr;
+            }
+			else if (o->type == REDIS_HASH)
+			{
+                if (rewriteHashObject(&aof, &key,o) == 0)
+					goto werr;
+            }
+			else
+			{
                 redisPanic("Unknown object type");
             }
+
             /* Save the expire time */
-            if (expiretime != -1) {
+            if (expiretime != -1)
+			{
                 char cmd[]="*3\r\n$9\r\nPEXPIREAT\r\n";
+
                 /* If this key is already expired skip it */
-                if (expiretime < now) continue;
-                if (rioWrite(&aof,cmd,sizeof(cmd)-1) == 0) goto werr;
-                if (rioWriteBulkObject(&aof,&key) == 0) goto werr;
-                if (rioWriteBulkLongLong(&aof,expiretime) == 0) goto werr;
+                if (expiretime < now)
+					continue;
+                if (rioWrite(&aof,cmd,sizeof(cmd)-1) == 0)
+					goto werr;
+                if (rioWriteBulkObject(&aof,&key) == 0)
+					goto werr;
+                if (rioWriteBulkLongLong(&aof,expiretime) == 0)
+					goto werr;
             }
         }
+
 #ifdef _WIN32
-        if (expIter) dictReleaseIterator(expIter);
+        if (expIter)
+			dictReleaseIterator(expIter);
+
         roDictReleaseIterator(di);
 #else
         dictReleaseIterator(di);
@@ -1132,11 +1405,13 @@ int rewriteAppendOnlyFile(char *filename) {
 
     /* Use RENAME to make sure the DB file is changed atomically only
      * if the generate DB file is ok. */
-    if (rename(tmpfile,filename) == -1) {
+    if (rename(tmpfile,filename) == -1)
+	{
         redisLog(REDIS_WARNING,"Error moving temp append only file on the final destination: %s", strerror(errno));
         unlink(tmpfile);
         return REDIS_ERR;
     }
+
     redisLog(REDIS_NOTICE,"SYNC append only file rewrite performed");
     return REDIS_OK;
 
@@ -1145,11 +1420,16 @@ werr:
     unlink(tmpfile);
     redisLog(REDIS_WARNING,"Write error writing append only file on disk: %s", strerror(errno));
 #ifdef _WIN32
-    if (expIter) dictReleaseIterator(expIter);
-    if (di) roDictReleaseIterator(di);
+    if (expIter)
+		dictReleaseIterator(expIter);
+
+    if (di)
+		roDictReleaseIterator(di);
 #else
-    if (di) dictReleaseIterator(di);
+    if (di)
+		dictReleaseIterator(di);
 #endif
+
     return REDIS_ERR;
 }
 
@@ -1264,10 +1544,11 @@ void bgrewriteaofCommand(redisClient *c) {
     }
 }
 
-void aofRemoveTempFile(pid_t childpid) {
+void aofRemoveTempFile(pid_t childpid)
+{
     char tmpfile[256];
 
-    snprintf(tmpfile,256,"temp-rewriteaof-bg-%d.aof", (int) childpid);
+    snprintf(tmpfile, 256, "temp-rewriteaof-bg-%d.aof", (int) childpid);
     unlink(tmpfile);
 }
 
@@ -1275,53 +1556,66 @@ void aofRemoveTempFile(pid_t childpid) {
  * to check the size of the file. This is useful after a rewrite or after
  * a restart, normally the size is updated just adding the write length
  * to the current length, that is much faster. */
-void aofUpdateCurrentSize(void) {
+void aofUpdateCurrentSize(void)
+{
     struct redis_stat sb;
 
 #ifdef _WIN32
-    if (server.aof_fd == -1) {
+    if (server.aof_fd == -1)
+	{
         redisLog(REDIS_NOTICE,"Unable to check the AOF length: %s", "appendfd is -1");
         return;
     }
 #endif
-    if (redis_fstat(server.aof_fd,&sb) == -1) {
+    if (redis_fstat(server.aof_fd,&sb) == -1)
+	{
         redisLog(REDIS_WARNING,"Unable to obtain the AOF file length. stat: %s",
             strerror(errno));
-    } else {
+    }
+	else
+	{
         server.aof_current_size = sb.st_size;
     }
 }
 
 /* A background append only file rewriting (BGREWRITEAOF) terminated its work.
  * Handle this. */
-void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
-    if (!bysignal && exitcode == 0) {
+void backgroundRewriteDoneHandler(int exitcode, int bysignal)
+{
+    if (!bysignal && exitcode == 0)
+	{
         int newfd, oldfd;
-        char tmpfile[256];
+        
         long long now = ustime();
 #ifdef _WIN32
-        char tmpfile_old[256];
+		char tmpfile[_MAX_DIR + MAX_PATH];
+        char tmpfile_old[_MAX_DIR + MAX_PATH];
+#else
+		char tmpfile[256];
 #endif
 
         redisLog(REDIS_NOTICE,
             "Background AOF rewrite terminated with success");
 
-        /* Flush the differences accumulated by the parent to the
-         * rewritten AOF. */
-        snprintf(tmpfile,256,"temp-rewriteaof-bg-%d.aof",
-            (int)server.aof_child_pid);
 #ifdef _WIN32
-        newfd = open(tmpfile,O_WRONLY|O_APPEND|O_CREAT|_O_BINARY,_S_IREAD|_S_IWRITE);
+		snprintf(tmpfile, _MAX_DIR + MAX_PATH, "%stemp-rewriteaof-bg-%d.aof", server.basepath, (int)server.aof_child_pid);
+
+        newfd = open(tmpfile, O_WRONLY | O_APPEND | O_CREAT | _O_BINARY , _S_IREAD | _S_IWRITE);
 #else
-        newfd = open(tmpfile,O_WRONLY|O_APPEND);
+		/* Flush the differences accumulated by the parent to the
+         * rewritten AOF. */
+        snprintf(tmpfile, 256, "temp-rewriteaof-bg-%d.aof", (int)server.aof_child_pid);
+        newfd = open(tmpfile, O_WRONLY | O_APPEND);
 #endif
-        if (newfd == -1) {
+        if (newfd == -1)
+		{
             redisLog(REDIS_WARNING,
                 "Unable to open the temporary AOF produced by the child: %s", strerror(errno));
             goto cleanup;
         }
 
-        if (aofRewriteBufferWrite(newfd) == -1) {
+        if (aofRewriteBufferWrite(newfd) == -1)
+		{
             redisLog(REDIS_WARNING,
                 "Error trying to flush the parent diff to the rewritten AOF: %s", strerror(errno));
             close(newfd);
@@ -1363,74 +1657,103 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
 
         /* Close files before renaming */
         close(newfd);
-        if (server.aof_fd != -1) close(server.aof_fd);
+
+        if (server.aof_fd != -1)
+			close(server.aof_fd);
+
         /* now rename the existing file to allow new file to be renamed */
-        snprintf(tmpfile_old,256,"temp-rewriteaof-old-%d.aof",
-            (int)server.aof_child_pid);
-        if (server.aof_fd != -1) {
-            if (rename(server.aof_filename, tmpfile_old) == -1) {
+		snprintf(tmpfile_old, _MAX_DIR + MAX_PATH, "%stemp-rewriteaof-old-%d.aof", server.basepath, (int)server.aof_child_pid);
+
+        if (server.aof_fd != -1)
+		{
+            if (rename(server.aof_filename, tmpfile_old) == -1)
+			{
                 redisLog(REDIS_WARNING,
                     "Error trying to rename the existing AOF to old tempfile: %s", strerror(errno));
             }
         }
-        if (rename(tmpfile,server.aof_filename) == -1) {
+
+        if (rename(tmpfile,server.aof_filename) == -1)
+		{
             redisLog(REDIS_WARNING,
                 "Error trying to rename the temporary AOF: %s", strerror(errno));
-            if (server.aof_fd != -1) {
-                if (rename(tmpfile_old, server.aof_filename) == -1) {
+
+            if (server.aof_fd != -1)
+			{
+                if (rename(tmpfile_old, server.aof_filename) == -1)
+				{
                     redisLog(REDIS_WARNING,
                         "Error trying to rename the existing AOF from old tempfile: %s", strerror(errno));
                 }
             }
-            if (oldfd != -1) close(oldfd);
+
+            if (oldfd != -1)
+				close(oldfd);
+
             goto cleanup;
         }
+
         /* now open the files again with new names */
-        newfd = open(server.aof_filename, O_WRONLY|O_APPEND|_O_BINARY);
-        if (newfd == -1) {
+        newfd = open(server.aof_filename, O_WRONLY | O_APPEND | _O_BINARY);
+
+        if (newfd == -1)
+		{
             /* Windows fix: More info */
             redisLog(REDIS_WARNING, "Not able to reopen the temporary AOF file after rename");
             goto cleanup;
         }
-        if (server.aof_fd != -1) {
+
+        if (server.aof_fd != -1)
+		{
             server.aof_fd = open(tmpfile_old, O_WRONLY|O_APPEND|O_CREAT|_O_BINARY,0644);
         }
 #else
-        if (server.aof_fd == -1) {
+        if (server.aof_fd == -1)
+		{
             /* AOF disabled */
 
              /* Don't care if this fails: oldfd will be -1 and we handle that.
               * One notable case of -1 return is if the old file does
               * not exist. */
              oldfd = open(server.aof_filename,O_RDONLY|O_NONBLOCK);
-        } else {
+        }
+		else
+		{
             /* AOF enabled */
             oldfd = -1; /* We'll set this to the current AOF filedes later. */
         }
 
         /* Rename the temporary file. This will not unlink the target file if
          * it exists, because we reference it with "oldfd". */
-        if (rename(tmpfile,server.aof_filename) == -1) {
+        if (rename(tmpfile,server.aof_filename) == -1)
+		{
             redisLog(REDIS_WARNING,
                 "Error trying to rename the temporary AOF file: %s", strerror(errno));
             close(newfd);
-            if (oldfd != -1) close(oldfd);
+
+            if (oldfd != -1)
+				close(oldfd);
             goto cleanup;
         }
 #endif
 
-        if (server.aof_fd == -1) {
+        if (server.aof_fd == -1)
+		{
             /* AOF disabled, we don't need to set the AOF file descriptor
              * to this new file, so we can close it. */
             close(newfd);
-        } else {
+        }
+		else
+		{
             /* AOF enabled, replace the old fd with the new one. */
             oldfd = server.aof_fd;
             server.aof_fd = newfd;
+
             if (server.aof_fsync == AOF_FSYNC_ALWAYS)
                 aof_fsync(newfd);
             else if (server.aof_fsync == AOF_FSYNC_EVERYSEC)
                 aof_background_fsync(newfd);
+
             server.aof_selected_db = -1; /* Make sure SELECT is re-issued */
             aofUpdateCurrentSize();
             server.aof_rewrite_base_size = server.aof_current_size;
@@ -1450,19 +1773,25 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
 
         /* Asynchronously close the overwritten AOF. */
 #ifdef _WIN32
-        if (oldfd != -1) bioCreateBackgroundJob(REDIS_BIO_CLOSE_FILE,(void*)(size_t)oldfd,NULL,NULL);
+        if (oldfd != -1)
+			bioCreateBackgroundJob(REDIS_BIO_CLOSE_FILE, (void*)(size_t)oldfd, NULL, NULL);
 #else
-        if (oldfd != -1) bioCreateBackgroundJob(REDIS_BIO_CLOSE_FILE,(void*)(long)oldfd,NULL,NULL);
+        if (oldfd != -1)
+			bioCreateBackgroundJob(REDIS_BIO_CLOSE_FILE, (void*)(long)oldfd, NULL, NULL);
 #endif
 
         redisLog(REDIS_VERBOSE,
             "Background AOF rewrite signal handler took %lldus", ustime()-now);
-    } else if (!bysignal && exitcode != 0) {
+    }
+	else if (!bysignal && exitcode != 0)
+	{
         server.aof_lastbgrewrite_status = REDIS_ERR;
 
         redisLog(REDIS_WARNING,
             "Background AOF rewrite terminated with error");
-    } else {
+    }
+	else
+	{
         server.aof_lastbgrewrite_status = REDIS_ERR;
 
         redisLog(REDIS_WARNING,
@@ -1472,6 +1801,7 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
 cleanup:
     aofRewriteBufferReset();
     aofRemoveTempFile(server.aof_child_pid);
+
 #ifdef _WIN32
     server.rdbbkgdfsave.state = BKSAVE_IDLE;
     /* turn off copy on write */
@@ -1480,6 +1810,7 @@ cleanup:
     server.aof_child_pid = -1;
     server.aof_rewrite_time_last = time(NULL)-server.aof_rewrite_time_start;
     server.aof_rewrite_time_start = -1;
+
     /* Schedule a new rewrite if we are waiting for it to switch the AOF ON. */
     if (server.aof_state == REDIS_AOF_WAIT_REWRITE)
         server.aof_rewrite_scheduled = 1;

@@ -267,11 +267,14 @@ void flushdbCommand(redisClient *c) {
     addReply(c,shared.ok);
 }
 
-void flushallCommand(redisClient *c) {
+void flushallCommand(redisClient *c)
+{
     signalFlushedDb(-1);
     server.dirty += emptyDb();
     addReply(c,shared.ok);
-    if (server.rdb_child_pid != -1) {
+
+    if (server.rdb_child_pid != -1)
+	{
 #ifdef _WIN32
         bkgdsave_termthread();
 #else
@@ -279,34 +282,46 @@ void flushallCommand(redisClient *c) {
 #endif
         rdbRemoveTempFile(server.rdb_child_pid);
     }
-    if (server.saveparamslen > 0) {
+
+    if (server.saveparamslen > 0)
+	{
         /* Normally rdbSave() will reset dirty, but we don't want this here
          * as otherwise FLUSHALL will not be replicated nor put into the AOF. */
         long long saved_dirty = server.dirty;
         rdbSave(server.rdb_filename);
         server.dirty = saved_dirty;
     }
+
     server.dirty++;
 }
 
-void delCommand(redisClient *c) {
+void delCommand(redisClient *c)
+{
     int deleted = 0, j;
 
-    for (j = 1; j < c->argc; j++) {
-        if (dbDelete(c->db,c->argv[j])) {
+    for (j = 1; j < c->argc; j++)
+	{
+        if (dbDelete(c->db,c->argv[j]))
+		{
             signalModifiedKey(c->db,c->argv[j]);
             server.dirty++;
             deleted++;
         }
     }
+
     addReplyLongLong(c,deleted);
 }
 
-void existsCommand(redisClient *c) {
+void existsCommand(redisClient *c)
+{
     expireIfNeeded(c->db,c->argv[1]);
-    if (dbExists(c->db,c->argv[1])) {
+
+    if (dbExists(c->db,c->argv[1]))
+	{
         addReply(c, shared.cone);
-    } else {
+    }
+	else
+	{
         addReply(c, shared.czero);
     }
 }

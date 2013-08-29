@@ -498,27 +498,47 @@ void configSetCommand(redisClient *c)
 {
 	robj *o;
 	long long ll;
+
 	redisAssertWithInfo(c,c->argv[2],c->argv[2]->encoding == REDIS_ENCODING_RAW);
 	redisAssertWithInfo(c,c->argv[2],c->argv[3]->encoding == REDIS_ENCODING_RAW);
 	o = c->argv[3];
 
-	if (!strcasecmp(c->argv[2]->ptr,"dbfilename"))
+	if (!strcasecmp((char*)c->argv[2]->ptr, "dbfilename"))
 	{
+#ifdef _WIN32
+		char* filename;
+		char* fullpath;
+		size_t filenamelen;
+#endif
+
 		zfree(server.rdb_filename);
-		server.rdb_filename = zstrdup(o->ptr);
+
+#ifdef _WIN32
+		filename = (char*)o->ptr;
+		filenamelen = strlen(filename);
+
+		// Create full path to file
+		fullpath = (char*)zmalloc(server.basepathlen + filenamelen);
+		memcpy(fullpath, server.basepath, server.basepathlen);
+		memcpy(fullpath + server.basepathlen, filename, filenamelen);
+
+		server.rdb_filename = fullpath;
+#else
+		server.rdb_filename = zstrdup((char*)o->ptr);
+#endif
 	}
-	else if (!strcasecmp(c->argv[2]->ptr,"requirepass"))
+	else if (!strcasecmp((char*)c->argv[2]->ptr, "requirepass"))
 	{
-		if (sdslen(o->ptr) > REDIS_AUTHPASS_MAX_LEN) goto badfmt;
+		if (sdslen((sds)o->ptr) > REDIS_AUTHPASS_MAX_LEN) goto badfmt;
 		zfree(server.requirepass);
 		server.requirepass = ((char*)o->ptr)[0] ? zstrdup((char*)o->ptr) : NULL;
 	}
-	else if (!strcasecmp(c->argv[2]->ptr,"masterauth"))
+	else if (!strcasecmp((char*)c->argv[2]->ptr,"masterauth"))
 	{
 		zfree(server.masterauth);
-		server.masterauth = zstrdup(o->ptr);
+		server.masterauth = zstrdup((char*)o->ptr);
 	}
-	else if (!strcasecmp(c->argv[2]->ptr,"maxmemory"))
+	else if (!strcasecmp((char*)c->argv[2]->ptr,"maxmemory"))
 	{
 		if (getLongLongFromObject(o,&ll) == REDIS_ERR ||
 			ll < 0) goto badfmt;
@@ -529,7 +549,7 @@ void configSetCommand(redisClient *c)
 			}
 			freeMemoryIfNeeded();
 		}
-	} else if (!strcasecmp(c->argv[2]->ptr,"hz")) {
+	} else if (!strcasecmp((char*)c->argv[2]->ptr, "hz")) {
 		if (getLongLongFromObject(o,&ll) == REDIS_ERR ||
 			ll < 0) goto badfmt;
 		server.hz = (int) ll;
