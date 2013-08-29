@@ -83,13 +83,34 @@ DWORD WINAPI ThreadWorker(LPVOID lpParam)
 {
 	struct timeval tv;
 
+	// DEBUG
+	/*
+	if (executedasservice())
+	{
+		static char message[200];
+
+		// Notify calling thread immediately to prevent SCM timeout
+		SetEvent(hStartedEvent);
+
+		// Make a delay to attach debugger
+		for (int i = 30; i >= 0; i--)
+		{
+			sprintf_s(message, "Service functionality will be resumed in... %02d secs\n", i);
+			OutputDebugString(message);
+
+			Sleep(1000);
+		}
+	}
+	*/
+	// END OF DEBUG
+
 	// We need to initialize our libraries, and the server configuration.
 	zmalloc_enable_thread_safeness();
 	zmalloc_set_oom_handler(redisOutOfMemoryHandler);
 	srand((unsigned int)time(NULL) ^ getpid());
-	gettimeofday(&tv,NULL);
+	gettimeofday(&tv, NULL);
 
-	dictSetHashFunctionSeed(tv.tv_sec^tv.tv_usec^getpid());
+	dictSetHashFunctionSeed(tv.tv_sec ^ tv.tv_usec ^ getpid());
 
 	// TODO: Allow to use sentinel mode
 	server.sentinel_mode = 0; // checkForSentinelMode(0, NULL);

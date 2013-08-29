@@ -12,6 +12,7 @@
 *.la
 *.a
 Debug/
+Release/
 *.opensdf
 *.sdf
 *.ipch
