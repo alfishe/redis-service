@@ -5,6 +5,9 @@
 #include "ServiceInstaller.h"
 #include "ServiceBase.h"
 #include "WindowsServiceImpl.h"
+#include <process.h>
+
+bool isrunningasservice(unsigned int pid);
 
 // Internal name of the service
 #define SERVICE_NAME             L"Redis"
@@ -104,20 +107,19 @@ int wmain(int argc, wchar_t *argv[])
 				service->ServiceWorkerThread();
 		}
     }
-    else
+    else if (isrunningasservice(_getpid()))
+	{
+		// Start service instance when executed as a service from SCM
+		service = new CWindowsServiceImpl(SERVICE_NAME);
+		CServiceBase::Run(*service);
+	}
+	else
     {
         wprintf(L"Parameters:\n");
         wprintf(L" /install      to install the service.\n");
         wprintf(L" /remove       to remove the service.\n");
 		wprintf(L" /commandline  to execute as CLI tool.\n");
     }
-
-	// Executed as a service from SCM
-	if (argc <= 1)
-	{
-		service = new CWindowsServiceImpl(SERVICE_NAME);
-		CServiceBase::Run(*service);
-	}
 
     return 0;
 }
@@ -131,4 +133,65 @@ void shutdown()
 		delete service;
 		service = NULL;
 	}
+}
+
+bool isrunningasservice(unsigned int pid)
+{
+    bool result = false;
+
+	try
+	{
+		SC_HANDLE hScm = OpenSCManager(
+			0,
+			SERVICES_ACTIVE_DATABASE,
+			SC_MANAGER_ENUMERATE_SERVICE
+		);
+
+		if (hScm == 0)
+			return result;
+
+		DWORD ServicesBufferRequired = 0;
+		DWORD ResumeHandle = 0;
+
+		DWORD ServicesBufferSize = 0;
+		DWORD ServicesCount = 0;
+		ENUM_SERVICE_STATUS_PROCESS* ServicesBuffer = 0;
+
+		EnumServicesStatusEx(hScm, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, 
+		SERVICE_ACTIVE, 0, 0, &ServicesBufferRequired, &ServicesCount, &ResumeHandle, 0);
+
+		ServicesBuffer = (ENUM_SERVICE_STATUS_PROCESS*)new char[ServicesBufferRequired];
+		ServicesBufferSize = ServicesBufferRequired;
+		EnumServicesStatusEx(hScm,
+							SC_ENUM_PROCESS_INFO,
+							SERVICE_WIN32, 
+							SERVICE_ACTIVE,
+							(LPBYTE)ServicesBuffer,
+							ServicesBufferSize, 
+							&ServicesBufferRequired,
+							&ServicesCount,
+							&ResumeHandle,
+							0);
+
+		ENUM_SERVICE_STATUS_PROCESS* ServicesBufferPtr = ServicesBuffer;
+		while (ServicesCount--)
+		{
+			if (ServicesBufferPtr->ServiceStatusProcess.dwProcessId == pid)
+			{
+				result = true;
+				break;
+			}
+
+			ServicesBufferPtr++;
+		}
+
+		delete [] ServicesBuffer;
+
+		CloseServiceHandle(hScm);
+	}
+	catch(...)
+	{
+	}
+
+    return result;
 }
