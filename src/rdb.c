@@ -1164,14 +1164,14 @@ int rdbSave(char *filename)
 
     for (j = 0; j < server.dbnum; j++)
 	{
-        redisDb *db = &server.db[j];
+        redisDb *db = server.db + j;
         dict *d = db->dict;
 
 #ifdef _WIN32
         if (server.isBackgroundSaving == 1)
 		{
             /* use background DB copy */
-            db = &server.cowSaveDb[j];
+            db = server.cowSaveDb + j;
             d = db->dict;
         }
 
@@ -1184,7 +1184,8 @@ int rdbSave(char *filename)
         /// to prevent rehash of expires from background thread, get safe iterator
         expIter = dictGetSafeIterator(db->expires);
 #else
-        if (dictSize(d) == 0) continue;
+        if (dictSize(d) == 0)
+continue;
         di = dictGetSafeIterator(d);
 #endif
         if (!di)

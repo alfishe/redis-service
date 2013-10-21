@@ -844,14 +844,14 @@ void cowBkgdSaveStart()
 
     for (j = 0; j < server.dbnum; j++)
 	{
-		redisDb curDb = server.cowSaveDb[j];
-		redisDb curServerDb = server.db[j];
+		redisDb* curDb = server.cowSaveDb + j;
+		redisDb* curServerDb = server.db + j;
 
         /* copy dictionary references for saving */
-        curDb.dict = curServerDb.dict;
-        curDb.expires = curServerDb.expires;
-        curDb.blocking_keys = curServerDb.blocking_keys;
-        curDb.watched_keys = curServerDb.watched_keys;
+        curDb->dict = curServerDb->dict;
+        curDb->expires = curServerDb->expires;
+        curDb->blocking_keys = curServerDb->blocking_keys;
+        curDb->watched_keys = curServerDb->watched_keys;
     }
 }
 
@@ -965,6 +965,28 @@ roDictIter *roDictGetIterator(dict *d, cowDictArray *ro)
     return iter;
 }
 
+dictEntry *roDictNext(roDictIter *iter) {
+    dictEntry *de = NULL;
+
+    cowLock();
+    if (iter->ar != NULL) {
+        if (iter->pos >= 0 && iter->pos < iter->ar->numele) {
+            de = &iter->ar->de[iter->pos];
+            iter->pos++;
+        }
+    } else if (iter->di != NULL) {
+        de = dictNext(iter->di);
+        iter->pos++;
+    }
+    if (de == NULL) {
+        iter->pos = -1;
+    }
+    cowUnlock();
+
+    return de;
+}
+
+/*
 dictEntry *roDictNext(roDictIter *iter)
 {
     dictEntry *de = NULL;
@@ -978,7 +1000,7 @@ dictEntry *roDictNext(roDictIter *iter)
 
         if (pos >= 0 && pos < dictArray->numele)
 		{
-            de = &dictArray->de[pos];
+            de = dictArray->de + pos;
         }
     }
 	else if (iter->di != NULL)
@@ -999,6 +1021,7 @@ dictEntry *roDictNext(roDictIter *iter)
 
     return de;
 }
+*/
 
 void roDictReleaseIterator(roDictIter *iter)
 {
@@ -1134,7 +1157,7 @@ listNode *roListNext(roListIter *iter)
 
         if (pos >= 0 && pos < listArray->numele)
 		{
-            ln = &listArray->le[pos];
+            ln = listArray->le + pos;
         }
     }
 	else
