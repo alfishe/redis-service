@@ -36,15 +36,20 @@
 #endif
 #include <math.h>
 #include <ctype.h>
+#include <assert.h>
 
-robj *createObject(int type, void *ptr) {
-    robj *o = zmalloc(sizeof(*o));
+robj *createObject(int type, void *ptr)
+{
+    robj *o = (robj*)zmalloc(sizeof(*o));
     o->type = type;
     o->encoding = REDIS_ENCODING_RAW;
     o->ptr = ptr;
     o->refcount = 1;
 
-    /* Set the LRU to the current lruclock (minutes resolution). */
+	// Verify type passed to ensure correct objects
+	assert(type <= REDIS_HASH);
+	
+	/* Set the LRU to the current lruclock (minutes resolution). */
     o->lru = server.lruclock;
     return o;
 }

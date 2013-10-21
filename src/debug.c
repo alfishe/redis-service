@@ -436,6 +436,8 @@ void _redisPanic(char *msg, char *file, int line) {
     redisLog(REDIS_WARNING,"(forcing SIGSEGV in order to print the stack trace)");
 #endif
     redisLog(REDIS_WARNING,"------------------------------------------------");
+
+	// Cause memory access exception (0xFFFFFFFF)
     *((char*)-1) = 'x';
 }
 

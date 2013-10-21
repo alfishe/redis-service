@@ -34,6 +34,7 @@
 
 #include <math.h>
 #include <sys/types.h>
+#include <assert.h>
 
 #ifndef _WIN32
 #include <sys/time.h>
@@ -610,6 +611,9 @@ int rdbLoadDoubleValue(rio *rdb, double *val)
 /* Save the object type of object "o". */
 int rdbSaveObjectType(rio *rdb, robj *o)
 {
+	// Ensure that object has correct type
+	assert(o->type <= REDIS_HASH);
+
     switch (o->type)
 	{
 		case REDIS_STRING:
@@ -1122,6 +1126,7 @@ int rdbSave(char *filename)
     FILE *fp;
     rio rdb;
     uint64_t cksum;
+	size_t dictSize = 0;
 
 #ifdef _WIN32
 	char tmpfile[_MAX_DIR + MAX_PATH];
@@ -1147,7 +1152,7 @@ int rdbSave(char *filename)
         return REDIS_ERR;
     }
 
-    rioInitWithFile(&rdb,fp);
+    rioInitWithFile(&rdb, fp);
 
     if (server.rdb_checksum)
         rdb.update_cksum = rioGenericUpdateChecksum;
@@ -1159,18 +1164,19 @@ int rdbSave(char *filename)
 
     for (j = 0; j < server.dbnum; j++)
 	{
-        redisDb *db = server.db+j;
+        redisDb *db = &server.db[j];
         dict *d = db->dict;
 
 #ifdef _WIN32
         if (server.isBackgroundSaving == 1)
 		{
             /* use background DB copy */
-            db = server.cowSaveDb + j;
+            db = &server.cowSaveDb[j];
             d = db->dict;
         }
 
-        if (roDBDictSize(j) == 0)
+		dictSize = roDBDictSize(j);
+        if (dictSize == 0)
 			continue;
 
         di = roDBGetIterator(j);
@@ -1190,6 +1196,7 @@ int rdbSave(char *filename)
         /* Write the SELECT DB opcode */
         if (rdbSaveType(&rdb, REDIS_RDB_OPCODE_SELECTDB) == -1)
 			goto werr;
+
         if (rdbSaveLen(&rdb, j) == -1)
 			goto werr;
 

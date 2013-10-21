@@ -50,7 +50,10 @@
 #ifdef _WIN32
 #include "win32fixes.h"
 #include "win32_bksv.h"
+
+// Do not exit the process when any error detected. Correctly exit current thread instead
 #define exit redisexit
+
 #else
 #include <pthread.h>
 #include <syslog.h>

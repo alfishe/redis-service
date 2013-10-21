@@ -1257,7 +1257,7 @@ int rewriteAppendOnlyFile(char *filename)
     for (j = 0; j < server.dbnum; j++)
 	{
         char selectcmd[] = "*2\r\n$6\r\nSELECT\r\n";
-        redisDb *db = server.db+j;
+        redisDb *db = &server.db[j];
         dict *d;
 
 #ifdef _WIN32
